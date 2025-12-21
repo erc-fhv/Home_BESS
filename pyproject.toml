@@ -1,0 +1,26 @@
+[project]
+name = "home_bess"
+version = "0.0.1"
+description = "Optimal Control of home BESS."
+authors = [{ name="Lukas Moosbrugger", email="molu@fhv.at" }]
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent"
+]
+dependencies = [
+    "pandas",
+    "matplotlib",
+    "requests",
+    "pytz",
+    "lxml",
+    "entsoe-py",
+]
+
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
