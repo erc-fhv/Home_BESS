@@ -16,6 +16,7 @@ dependencies = [
     "pytz",
     "lxml",
     "entsoe-py",
+    "pulp"
 ]
 
 [build-system]

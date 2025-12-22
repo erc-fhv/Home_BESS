@@ -1,2 +1,4 @@
 .venv
 .env
+**.csv
+src/home_bess.egg-info/
