@@ -151,9 +151,9 @@ class Bess:
             self.price_sell = pd.Series(0.09, index=prices_epex.index)
             self.price_buy  = pd.Series(0.1272, index=prices_epex.index)
 
-        self.df_energy = self.df_energy.resample(freq).mean()
-        self.pv_forecast = self.df_energy["Production"].loc[act_range]
-        self.load_forecast = self.df_energy["Consumption"].loc[act_range]
+        df_energy = self.df_energy.loc[act_range].resample(freq).mean()
+        self.pv_forecast = df_energy["Production"]
+        self.load_forecast = df_energy["Consumption"]
         self.net_load = self.load_forecast - self.pv_forecast
 
         self.lp_result, self.pulp_model = self.optimize_day(
