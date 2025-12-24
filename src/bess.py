@@ -26,7 +26,20 @@ class Bess:
         self.eta_discharge = eta_discharge
 
         self.lp_result = {}
-        self.prices_epex = pd.Series()
+        self.price_sell = pd.Series()
+        self.price_buy = pd.Series()
+
+        # Epex Preise einlesen
+        df_prices_epex = pd.read_csv("../data/day_ahead_prices.csv", index_col=0)
+        df_prices_epex.index = pd.to_datetime(df_prices_epex.index, utc=True)
+        df_prices_epex.index = df_prices_epex.index.tz_convert("Europe/Vienna")
+        self.prices_epex = df_prices_epex["day_ahead_price_EUR_MWh"]
+
+        # Energieverbrauchs- und Produktionsdaten einlesen
+        self.df_energy = pd.read_csv("../data/energy_data.csv", index_col=0)
+        self.df_energy.index = pd.to_datetime(self.df_energy.index, utc=True)
+        self.df_energy.index = self.df_energy.index.tz_convert("Europe/Vienna")
+        self.df_energy = self.df_energy / 1000.0  # Umrechnung in kW
 
     def optimize_day(
         self,
@@ -36,7 +49,7 @@ class Bess:
         load: pd.Series,          # kW
         soc0: float,              # kWh
         verbose: bool = True,
-        ) -> dict:
+        ) -> tuple:
 
         # Konsistenzcheck
         assert price_sell.index.equals(price_buy.index)
@@ -107,19 +120,14 @@ class Bess:
             "p_buy":  pd.Series([p_buy[p].value() for p in P], index=time_periods),
         }
 
-        return ret_variables
+        return ret_variables, model
 
     def run(
         self,
         act_day: pd.Timestamp,
+        use_dynamic_prices: bool = True,
         verbose: bool = False,
         ) -> None:
-
-        # VKW dynmaische Preise in ct/kWh
-        df_prices_epex = pd.read_csv("../data/day_ahead_prices.csv", index_col=0)
-        df_prices_epex.index = pd.to_datetime(df_prices_epex.index, utc=True)
-        df_prices_epex.index = df_prices_epex.index.tz_convert("Europe/Vienna")
-        self.prices_epex = df_prices_epex["day_ahead_price_EUR_MWh"]
 
         # get freq of act day
         day_data = self.prices_epex.loc[act_day: act_day + pd.Timedelta(days=1)]
@@ -131,26 +139,28 @@ class Bess:
             freq=freq,
             tz="Europe/Vienna",
             )
-        self.prices_epex = self.prices_epex.loc[act_range]
-        self.prices_epex = self.prices_epex / 1000  # Umrechnung in EUR/kWh
-        price_sell = self.prices_epex - 0.6
-        price_buy  = self.prices_epex + 1.44
+        prices_epex = self.prices_epex.loc[act_range]
+        prices_epex = prices_epex / 1000  # Umrechnung in EUR/kWh
 
-        df_energy = pd.read_csv("../data/energy_data.csv", index_col=0)
-        df_energy.index = pd.to_datetime(df_energy.index, utc=True)
-        df_energy.index = df_energy.index.tz_convert("Europe/Vienna")
-        df_energy = df_energy / 1000.0  # Umrechnung in kW
+        if use_dynamic_prices:
+            # VKW dynmaische Preise in EUR/kWh
+            self.price_sell = prices_epex - 0.006
+            self.price_buy  = prices_epex + 0.0144
+        else:
+            # fixe Preise in ct/kWh
+            self.price_sell = pd.Series(0.09, index=prices_epex.index)
+            self.price_buy  = pd.Series(0.1272, index=prices_epex.index)
 
-        df_energy = df_energy.resample(freq).mean()
-        pv_forecast = df_energy["Production"].loc[act_range]
-        load_forecast = df_energy["Consumption"].loc[act_range]
-        self.net_load = load_forecast - pv_forecast
+        self.df_energy = self.df_energy.resample(freq).mean()
+        self.pv_forecast = self.df_energy["Production"].loc[act_range]
+        self.load_forecast = self.df_energy["Consumption"].loc[act_range]
+        self.net_load = self.load_forecast - self.pv_forecast
 
-        self.lp_result = self.optimize_day(
-            price_sell=price_sell,
-            price_buy=price_buy,
-            pv=pv_forecast,
-            load=load_forecast,
+        self.lp_result, self.pulp_model = self.optimize_day(
+            price_sell=self.price_sell,
+            price_buy=self.price_buy,
+            pv=self.pv_forecast,
+            load=self.load_forecast,
             soc0=0.5 * self.capacity_kwh,
             verbose=verbose,
         )
@@ -175,7 +185,27 @@ class Bess:
                 x=self.prices_epex.index,
                 y=self.prices_epex.values,
                 line_shape="hv",
-                name="Preis",
+                name="Epex Preis",
+            ),
+            row=1, col=1,
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=self.prices_epex.index,
+                y=self.price_sell.values,
+                line_shape="hv",
+                name="Einspeisepreis",
+            ),
+            row=1, col=1,
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=self.prices_epex.index,
+                y=self.price_buy.values,
+                line_shape="hv",
+                name="Bezugspreise",
             ),
             row=1, col=1,
         )
@@ -299,7 +329,7 @@ class Bess:
                             id="act-day-picker",
                             min_date_allowed="2025-01-01",
                             max_date_allowed="2025-12-31",
-                            date="2025-05-15",
+                            date="2025-11-05",
                             display_format="DD.MM.YYYY",
                         ),
                         html.Button("▶", id="next-day", n_clicks=0),
