@@ -139,17 +139,17 @@ class Bess:
             freq=freq,
             tz="Europe/Vienna",
             )
-        prices_epex = self.prices_epex.loc[act_range]
-        prices_epex = prices_epex / 1000  # Umrechnung in EUR/kWh
+        self.act_prices_epex = self.prices_epex.loc[act_range]
+        prices_epex = self.act_prices_epex / 1000  # Umrechnung in EUR/kWh
 
         if use_dynamic_prices:
             # VKW dynmaische Preise in EUR/kWh
-            self.price_sell = prices_epex - 0.006
-            self.price_buy  = prices_epex + 0.0144
+            self.price_sell = self.act_prices_epex - 0.006
+            self.price_buy  = self.act_prices_epex + 0.0144
         else:
             # fixe Preise in ct/kWh
-            self.price_sell = pd.Series(0.09, index=prices_epex.index)
-            self.price_buy  = pd.Series(0.1272, index=prices_epex.index)
+            self.price_sell = pd.Series(0.09, index=self.act_prices_epex.index)
+            self.price_buy  = pd.Series(0.1272, index=self.act_prices_epex.index)
 
         df_energy = self.df_energy.loc[act_range].resample(freq).mean()
         self.pv_forecast = df_energy["Production"]
@@ -182,8 +182,8 @@ class Bess:
 
         fig.add_trace(
             go.Scatter(
-                x=self.prices_epex.index,
-                y=self.prices_epex.values,
+                x=self.act_prices_epex.index,
+                y=self.act_prices_epex.values,
                 line_shape="hv",
                 name="Epex Preis",
             ),
@@ -192,7 +192,7 @@ class Bess:
 
         fig.add_trace(
             go.Scatter(
-                x=self.prices_epex.index,
+                x=self.act_prices_epex.index,
                 y=self.price_sell.values,
                 line_shape="hv",
                 name="Einspeisepreis",
@@ -202,7 +202,7 @@ class Bess:
 
         fig.add_trace(
             go.Scatter(
-                x=self.prices_epex.index,
+                x=self.act_prices_epex.index,
                 y=self.price_buy.values,
                 line_shape="hv",
                 name="Bezugspreise",
