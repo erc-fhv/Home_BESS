@@ -34,6 +34,8 @@ class Bess:
         df_prices_epex.index = pd.to_datetime(df_prices_epex.index, utc=True)
         df_prices_epex.index = df_prices_epex.index.tz_convert("Europe/Vienna")
         self.prices_epex = df_prices_epex["day_ahead_price_EUR_MWh"]
+        self.prices_epex = self.prices_epex / 1000  # Umrechnung in EUR/kWh
+        self.prices_epex = self.prices_epex.resample('15min').ffill()
 
         # Energieverbrauchs- und Produktionsdaten einlesen
         self.df_energy = pd.read_csv("../data/energy_data.csv", index_col=0)
@@ -129,18 +131,13 @@ class Bess:
         verbose: bool = False,
         ) -> None:
 
-        # get freq of act day
-        day_data = self.prices_epex.loc[act_day: act_day + pd.Timedelta(days=1)]
-        freq = pd.infer_freq(day_data.index)
-
         act_range = pd.date_range(
             start=act_day,
             end=act_day + pd.Timedelta(days=1),
-            freq=freq,
+            freq='15min',
             tz="Europe/Vienna",
             )
         self.act_prices_epex = self.prices_epex.loc[act_range]
-        self.act_prices_epex = self.act_prices_epex / 1000  # Umrechnung in EUR/kWh
 
         if use_dynamic_prices:
             # VKW dynmaische Preise in EUR/kWh
@@ -151,9 +148,8 @@ class Bess:
             self.price_sell = pd.Series(0.09, index=self.act_prices_epex.index)
             self.price_buy  = pd.Series(0.1272, index=self.act_prices_epex.index)
 
-        df_energy = self.df_energy.loc[act_range].resample(freq).mean()
-        self.pv_forecast = df_energy["Production"]
-        self.load_forecast = df_energy["Consumption"]
+        self.pv_forecast = self.df_energy.loc[act_range]["Production"]
+        self.load_forecast = self.df_energy.loc[act_range]["Consumption"]
         self.net_load = self.load_forecast - self.pv_forecast
 
         self.lp_result, self.pulp_model = self.optimize_day(
