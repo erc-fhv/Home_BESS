@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from dash import Dash, dcc, html, Input, Output, callback_context, State
+from dash import Dash, dcc, html, Input, Output
 
 class Bess:
     def __init__(
@@ -26,7 +26,6 @@ class Bess:
         self.eta_discharge = eta_discharge
 
         self.lp_result = {}
-        self.prices_epex = pd.Series()
 
     def optimize_day(
         self,
@@ -116,13 +115,13 @@ class Bess:
         ) -> None:
 
         # VKW dynmaische Preise in ct/kWh
-        df_prices_epex = pd.read_csv("../data/day_ahead_prices.csv", index_col=0)
-        df_prices_epex.index = pd.to_datetime(df_prices_epex.index, utc=True)
-        df_prices_epex.index = df_prices_epex.index.tz_convert("Europe/Vienna")
-        self.prices_epex = df_prices_epex["day_ahead_price_EUR_MWh"]
+        self.df_prices_epex = pd.read_csv("../data/day_ahead_prices.csv", index_col=0)
+        self.df_prices_epex.index = pd.to_datetime(self.df_prices_epex.index, utc=True)
+        self.df_prices_epex.index = self.df_prices_epex.index.tz_convert("Europe/Vienna")
+        prices_epex = self.df_prices_epex["day_ahead_price_EUR_MWh"]
 
         # get freq of act day
-        day_data = self.prices_epex.loc[act_day: act_day + pd.Timedelta(days=1)]
+        day_data = prices_epex.loc[act_day: act_day + pd.Timedelta(days=1)]
         freq = pd.infer_freq(day_data.index)
 
         act_range = pd.date_range(
@@ -131,7 +130,7 @@ class Bess:
             freq=freq,
             tz="Europe/Vienna",
             )
-        self.prices_epex = self.prices_epex.loc[act_range]
+        self.prices_epex = self.df_prices_epex.loc[act_range]
         self.prices_epex = self.prices_epex / 1000  # Umrechnung in EUR/kWh
         price_sell = self.prices_epex - 0.6
         price_buy  = self.prices_epex + 1.44
@@ -254,34 +253,6 @@ class Bess:
 
         fig.update_yaxes(range=[0, 100], row=3, col=1)
 
-        # --- Y-Achsen hinzufügen ---
-        fig.update_yaxes(
-            title_text="Preis [EUR/kWh]",
-            row=1, col=1,
-        )
-
-        fig.update_yaxes(
-            title_text="Residuallast [kW]",
-            row=2, col=1,
-        )
-
-        fig.update_yaxes(
-            title_text="SOC [%]",
-            range=[0, 100],
-            row=3, col=1,
-        )
-
-        fig.update_yaxes(
-            title_text="Leistung [kW]",
-            row=4, col=1,
-        )
-
-        fig.update_yaxes(
-            title_text="Batterie Laden [kW]",
-            row=5, col=1,
-        )
-
-
         return fig
 
     def run_dashboard(self):
@@ -292,59 +263,18 @@ class Bess:
             [
                 html.H3("Batterie-Optimierung – Tagesauswahl"),
 
-                html.Div(
-                    [
-                        html.Button("◀", id="prev-day", n_clicks=0),
-                        dcc.DatePickerSingle(
-                            id="act-day-picker",
-                            min_date_allowed="2025-01-01",
-                            max_date_allowed="2025-12-31",
-                            date="2025-05-15",
-                            display_format="DD.MM.YYYY",
-                        ),
-                        html.Button("▶", id="next-day", n_clicks=0),
-                    ],
-                    style={
-                        "display": "flex",
-                        "alignItems": "center",
-                        "gap": "10px",
-                        "marginBottom": "10px",
-                    },
+                dcc.DatePickerSingle(
+                    id="act-day-picker",
+                    min_date_allowed="2025-01-01",
+                    max_date_allowed="2025-12-31",
+                    date="2025-05-15",
+                    display_format="DD.MM.YYYY",
                 ),
 
                 dcc.Graph(id="result-graph"),
             ],
             style={"width": "1200px", "margin": "auto"},
         )
-
-        @app.callback(
-            Output("act-day-picker", "date"),
-            Input("prev-day", "n_clicks"),
-            Input("next-day", "n_clicks"),
-            State("act-day-picker", "date"),
-        )
-        def shift_day(prev_clicks, next_clicks, current_date):
-
-            if current_date is None:
-                return current_date
-
-            ctx = callback_context
-            if not ctx.triggered:
-                return current_date
-
-            triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
-            date = pd.Timestamp(current_date)
-
-            if triggered_id == "prev-day":
-                date -= pd.Timedelta(days=1)
-            elif triggered_id == "next-day":
-                date += pd.Timedelta(days=1)
-
-            # Begrenzung auf 2025
-            date = max(pd.Timestamp("2025-01-01"), date)
-            date = min(pd.Timestamp("2025-12-31"), date)
-
-            return date.date()
 
         @app.callback(
             Output("result-graph", "figure"),
@@ -355,4 +285,4 @@ class Bess:
             self.run(act_day)
             return self.build_figure()
 
-        app.run(debug=True)
+        app.run_server(debug=True)

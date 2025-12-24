@@ -16,7 +16,9 @@ dependencies = [
     "pytz",
     "lxml",
     "entsoe-py",
-    "pulp"
+    "pulp",
+    "plotly",
+    "dash"
 ]
 
 [build-system]
