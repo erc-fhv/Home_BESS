@@ -140,7 +140,7 @@ class Bess:
             tz="Europe/Vienna",
             )
         self.act_prices_epex = self.prices_epex.loc[act_range]
-        prices_epex = self.act_prices_epex / 1000  # Umrechnung in EUR/kWh
+        self.act_prices_epex = self.act_prices_epex / 1000  # Umrechnung in EUR/kWh
 
         if use_dynamic_prices:
             # VKW dynmaische Preise in EUR/kWh
