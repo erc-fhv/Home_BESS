@@ -8,7 +8,7 @@ from dash import Dash, dcc, html, Input, Output, callback_context, State
 class Bess:
     def __init__(
         self,
-        capacity_kwh: float = 5.12*4,
+        capacity_kwh: float = 5.12*6,
         max_charge_kw: float = 4.0*3,
         max_discharge_kw: float = 4.0*3,
         soc_min: float = 0.1,
