@@ -148,14 +148,13 @@ class Bess:
             self.price_sell = pd.Series(0.09, index=self.act_prices_epex.index)
             self.price_buy  = pd.Series(0.1272, index=self.act_prices_epex.index)
 
-        self.pv_forecast = self.df_energy.loc[act_range]["Production"]
+        self.pv = self.df_energy.loc[act_range]["Production"]
         self.load_forecast = self.df_energy.loc[act_range]["Consumption"]
-        self.net_load = self.load_forecast - self.pv_forecast
 
         self.lp_result, self.pulp_model = self.optimize_day(
             price_sell=self.price_sell,
             price_buy=self.price_buy,
-            pv=self.pv_forecast,
+            pv=self.pv,
             load=self.load_forecast,
             soc0=0.5 * self.capacity_kwh,
             verbose=verbose,
@@ -169,7 +168,7 @@ class Bess:
             vertical_spacing=0.04,
             subplot_titles=[
                 "EPEX Day-Ahead Preis",
-                "Residuallastprofil",
+                "Last und PV-Erzeugung",
                 "Batterie State of Charge",
                 "Netz Einspeisung / Bezug",
                 "Batterieladung",
@@ -208,10 +207,20 @@ class Bess:
 
         fig.add_trace(
             go.Scatter(
-                x=self.net_load.index,
-                y=self.net_load.values,
+                x=self.pv.index,
+                y=self.pv.values,
                 line_shape="hv",
-                name="Residuallast",
+                name="PV-Erzeugung",
+            ),
+            row=2, col=1,
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=self.load_forecast.index,
+                y=self.load_forecast.values,
+                line_shape="hv",
+                name="Last",
             ),
             row=2, col=1,
         )
@@ -287,7 +296,7 @@ class Bess:
         )
 
         fig.update_yaxes(
-            title_text="Residuallast [kW]",
+            title_text="Leistung [kW]",
             row=2, col=1,
         )
 
@@ -307,10 +316,29 @@ class Bess:
             row=5, col=1,
         )
 
+        # Anzeige des aktuellen Objective-Werts (falls verfügbar) oben rechts
+        try:
+            objective_value = pulp.value(self.pulp_model.objective)
+            fig.add_annotation(
+                x=1.0,
+                y=1.02,
+                xref="paper",
+                yref="paper",
+                text=f"Objective: {objective_value:.2f} EUR",
+                showarrow=False,
+                align="right",
+                font=dict(size=12, color="black"),
+            )
+        except Exception:
+            # Falls das Modell noch nicht gesetzt ist, nichts tun
+            pass
 
         return fig
 
-    def run_dashboard(self):
+    def run_dashboard(
+        self,
+        use_dynamic_prices: bool = True,
+        ) -> None:
 
         app = Dash(__name__)
 
@@ -378,7 +406,7 @@ class Bess:
         )
         def update_graph(act_day):
             act_day = pd.Timestamp(act_day, tz="Europe/Vienna")
-            self.run(act_day)
+            self.run(act_day=act_day, use_dynamic_prices=use_dynamic_prices, verbose=False)
             return self.build_figure()
 
         app.run(debug=True)
