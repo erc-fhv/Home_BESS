@@ -20,7 +20,11 @@ dependencies = [
     "plotly",
     "dash",
     "paho-mqtt",
-    "ipykernel"
+    "ipykernel",
+    "openmeteo_requests",
+    "requests-cache",
+    "retry-requests",
+    "loadforecasting_models"
 ]
 
 [build-system]

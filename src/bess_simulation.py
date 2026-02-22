@@ -1,9 +1,13 @@
+from pathlib import Path
 import pulp
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from dash import Dash, dcc, html, Input, Output, callback_context, State
+
+from get_day_ahead_prices import DayAheadPrice
+
 
 class Bess:
     def __init__(
@@ -30,7 +34,15 @@ class Bess:
         self.price_buy = pd.Series()
 
         # Epex Preise einlesen
-        df_prices_epex = pd.read_csv("../data/day_ahead_prices.csv", index_col=0)
+        file_path = Path("../data/day_ahead_prices.csv")
+        if not file_path.exists():
+            DayAheadPrice.get_prices(
+                country_code="AT",
+                start_date=pd.Timestamp("2025-01-01", tz="Europe/Vienna"),
+                end_date=pd.Timestamp("2025-12-24", tz="Europe/Vienna"),
+                store_to_file=file_path,
+                )
+        df_prices_epex = pd.read_csv(file_path, index_col=0)
         df_prices_epex.index = pd.to_datetime(df_prices_epex.index, utc=True)
         df_prices_epex.index = df_prices_epex.index.tz_convert("Europe/Vienna")
         self.prices_epex = df_prices_epex["day_ahead_price_EUR_MWh"]
