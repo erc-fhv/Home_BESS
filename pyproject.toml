@@ -18,7 +18,9 @@ dependencies = [
     "entsoe-py",
     "pulp",
     "plotly",
-    "dash"
+    "dash",
+    "paho-mqtt",
+    "ipykernel"
 ]
 
 [build-system]
