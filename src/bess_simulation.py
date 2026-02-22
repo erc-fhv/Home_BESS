@@ -338,6 +338,7 @@ class Bess:
     def run_dashboard(
         self,
         use_dynamic_prices: bool = True,
+        port: int = 8050,
         ) -> None:
 
         app = Dash(__name__)
@@ -409,4 +410,4 @@ class Bess:
             self.run(act_day=act_day, use_dynamic_prices=use_dynamic_prices, verbose=False)
             return self.build_figure()
 
-        app.run(debug=True)
+        app.run(debug=True, port=port)
