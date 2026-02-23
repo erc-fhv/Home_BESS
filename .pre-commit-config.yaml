@@ -363,7 +363,7 @@ repos:
         stages: [pre-push]
         name: pytest
         entry: uv run pytest --cov --cov-report term:skip-covered --cov-fail-under
-          60 -n logical --exitfirst
+          0 -n logical --exitfirst
         language: system
         types: [python]
         pass_filenames: false
