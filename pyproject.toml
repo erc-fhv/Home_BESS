@@ -28,7 +28,8 @@ dependencies = [
     "requests-cache",
     "retry-requests",
     "loadforecasting-models",
-    "ipywidgets"
+    "ipywidgets",
+    "pvlib"
 ]
 
 [dependency-groups]
