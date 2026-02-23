@@ -44,7 +44,7 @@ repos:
 
   # UV: ensure uv.lock and environment sync (uv tool integration)
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.9.27
+    rev: 0.10.4
     hooks:
       # Purpose: synchronize uv.lock with pyproject.toml dependencies
       - id: uv-sync
@@ -206,19 +206,19 @@ repos:
       # Purpose: RST: flag problematic backticks usage
       - id: rst-backticks
         stages: [pre-commit]
-        types: [python]
+        types: [rst]
       # Purpose: RST: enforce directive colon spacing
       - id: rst-directive-colons
         stages: [pre-commit]
-        types: [python]
+        types: [rst]
       # Purpose: RST inline formatting checks
       - id: rst-inline-touching-normal
         stages: [pre-commit]
-        types: [python]
+        types: [rst]
       # Purpose: detect Unicode replacement characters in text
       - id: text-unicode-replacement-char
         stages: [pre-commit]
-        types: [python]
+        types: [text]
 #  # EditorConfig checker: validate EditorConfig adherence
 #  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
 #    rev: 3.6.0
@@ -277,7 +277,7 @@ repos:
         stages: [manual]
         name: docformatter
         entry: uv run docformatter --in-place --make-summary-multi-line --close-quotes-on-newline
-          --recursive src/eigenalp
+          --recursive src/home_bess
         language: system
         types: [python]
         pass_filenames: false
@@ -289,16 +289,16 @@ repos:
       # Purpose: run ruff linter and auto-fix issues
       - id: ruff-check
         stages: [pre-commit]
-        types_or: [python, pyi]
+        # types_or: [python, pyi]
         args: [--fix, --unsafe-fixes]
       # Purpose: format code via ruff
       - id: ruff-format
         stages: [pre-commit]
-        types_or: [python, pyi]
+        # types_or: [python, pyi]
 
   # Validate pyproject: check project configuration schema
   - repo: https://github.com/henryiii/validate-pyproject-schema-store
-    rev: 2026.01.22
+    rev: 2026.02.22
     hooks:
       # Purpose: validate pyproject.toml structure against schema
       - id: validate-pyproject

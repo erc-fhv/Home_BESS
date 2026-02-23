@@ -7,7 +7,7 @@ authors = [
     { name = "Kevin Kaspar", email = "kevin.kaspar@fhv.at" },
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent"
@@ -45,11 +45,8 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools >= 77.0.3"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-package-dir = {"" = "src"}
+requires = ["uv_build>=0.9.27,<0.10.0"]
+build-backend = "uv_build"
 
 
 # ================================= COMMITIZEN

@@ -5,8 +5,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import pulp
 from dash import Dash, Input, Output, State, callback_context, dcc, html
-from get_day_ahead_prices import DayAheadPrice
 from plotly.subplots import make_subplots
+
+from home_bess.interfaces.get_day_ahead_prices import DayAheadPrice
 
 
 class Bess:
