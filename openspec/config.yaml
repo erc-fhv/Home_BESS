@@ -1,0 +1,58 @@
+schema: spec-driven
+
+# Project context
+context: |
+  **Project**: Optimal control of home Battery Energy Storage Systems (BESS) with day-ahead energy arbitrage optimization.
+  
+  **Tech Stack**: 
+  - Python ≥3.11
+  - PuLP + CBC solver for Mixed-Integer Linear Programming optimization
+  - Dash + Plotly for interactive dashboards
+  - MQTT (Victron broker) for real-time battery data
+  - REST APIs: ENTSO-E (day-ahead prices), Open-Meteo (weather forecasts)
+  - Pre-trained GAM-based forecasting models (pickle format)
+  
+  **Architecture**:
+  - `simulation/`: Day-ahead optimization (24h MILP for arbitrage)
+  - `control/`: Model Predictive Controller (real-time dispatch)
+  - `interfaces/`: External data adapters (MQTT, APIs)
+  - `forecasting/`: Demand & solar prediction models
+  
+  **Code Style**:
+  - ERC Python guidelines: NumPy-style docstrings, type hints required
+  - 79-char code lines, 72-char docstrings, 4-space indentation
+  - Unit-aware variable names (e.g., energy_kwh, price_eur_mwh, soc_percent)
+  - f-strings for formatting, no hardcodes (use constants)
+  - Descriptive function names: calculate_*, fetch_*, etc.
+  - Relative imports problematic; always run from workspace root
+  - Timezone-aware timestamps: pytz.timezone('Europe/Vienna')
+  
+  **Development**:
+  - Tool: uv (dependency management, virtual environments)
+  - Testing: pytest (pytest-xdist, pytest-cov for parallelization & coverage)
+  - Linting: Ruff (120-char lines, NumPy docstring style)
+  - Scripts run from workspace root with PYTHONPATH including src/
+  
+  **Data**:
+  - CSV-first architecture (local cache, APIs download if missing)
+  - Structure: data/{task_name}/, tmp/{task_name}/ for intermediary files
+  - Credentials in .json at workspace root (PORTAL_ID, USER, VR_PW, ENTSOE_API_KEY)
+
+# Per-artifact rules
+rules:
+  proposal:
+    - Focus on energy arbitrage optimization and BESS control logic
+    - Include integration points with MQTT, ENTSO-E, and Open-Meteo
+    - Consider battery constraints (SOC, power ratings, efficiency)
+  
+  tasks:
+    - Break implementation into chunks of max 2 hours
+    - Prioritize modules: simulation, interfaces, then control & forecasting
+    - Always include type hints and NumPy-style docstrings
+    - Run src/ code from workspace root or with proper PYTHONPATH
+  
+  implementation:
+    - Follow self-explanatory code principles (minimal comments, clear naming)
+    - Unit-aware variable naming throughout
+    - Test with uv run pytest for any new test files
+    - Use CSV caching pattern for external API data
