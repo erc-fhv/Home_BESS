@@ -1,11 +1,10 @@
-
-from asyncio import timeout
-from pathlib import Path
 import json
-from socket import timeout
-import time
-import paho.mqtt.client as mqtt
 import ssl
+import time
+from pathlib import Path
+
+import paho.mqtt.client as mqtt
+
 
 class Victron_Mqtt_Reader:
     def __init__(self):
@@ -30,7 +29,6 @@ class Victron_Mqtt_Reader:
 
     def connect(self):
         """Connect to the MQTT broker and start the loop."""
-
         self.client = mqtt.Client(
             client_id="milp_client",
             protocol=mqtt.MQTTv311,
@@ -38,7 +36,7 @@ class Victron_Mqtt_Reader:
         self.client.username_pw_set(self.username, self.pw)
         self.client.tls_set(
             ca_certs="../data/venus-ca.crt",  # Victron CA certificate
-            cert_reqs=ssl.CERT_REQUIRED
+            cert_reqs=ssl.CERT_REQUIRED,
         )
         self.client.tls_insecure_set(False)
         self.client.on_connect = self.on_connect
@@ -60,19 +58,14 @@ class Victron_Mqtt_Reader:
         try:
             self.latest_packets[msg.topic] = json.loads(payload_text)
         except json.JSONDecodeError as e:
-            raise ValueError((f"Failed to decode JSON payload for topic {msg.topic}: {payload_text}"
-                f"Error: {e}")) from e
+            raise ValueError(f"Failed to decode JSON payload for topic {msg.topic}: {payload_text}Error: {e}") from e
 
         self.latest_packets[msg.topic] = self.latest_packets[msg.topic].get("value")
 
-    def get_latest_value(self, value_type:str, timeout_sec:int=10):
-        """
-        Return the latest value to a given topic, e.g. "soc".
-        """
-
+    def get_latest_value(self, value_type: str, timeout_sec: int = 10):
+        """Return the latest value to a given topic, e.g. "soc"."""
         if value_type not in self.topics:
-            raise ValueError((f"Invalid value type: {value_type}. Valid types are: "
-                             f"{list(self.topics.keys())}"))
+            raise ValueError(f"Invalid value type: {value_type}. Valid types are: {list(self.topics.keys())}")
 
         topic = self.topics[value_type]
         self.client.subscribe(topic)
@@ -93,6 +86,7 @@ class Victron_Mqtt_Reader:
         """Victron MQTT requires a keepalive message to trigger the data flow."""
         payload = json.dumps({"keepalive-options": ["full"]})
         client.publish(self.keepalive_topic, payload)
+
 
 if __name__ == "__main__":
     mqtt_reader = Victron_Mqtt_Reader()

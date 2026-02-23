@@ -2,7 +2,10 @@
 name = "home_bess"
 version = "0.0.1"
 description = "Optimal Control of home BESS."
-authors = [{ name="Lukas Moosbrugger", email="molu@fhv.at" }]
+authors = [
+    { name = "Lukas Moosbrugger", email = "molu@fhv.at" },
+    { name = "Kevin Kaspar", email = "kevin.kaspar@fhv.at" },
+]
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
@@ -28,9 +31,79 @@ dependencies = [
     "ipywidgets"
 ]
 
+[dependency-groups]
+dev = [
+    "commitizen>=4.10.1",
+    "ruff>=0.14.9",
+    "pytest>=8.3.5",
+    "pytest-xdist[psutil]>=3.6.1",
+    "autotyping>=24.9.0",
+    "pytest-cov>=7.0.0",
+    "docformatter>=1.7.7",
+    "pytest-skip-slow>=0.0.5",
+    "ty>=0.0.14",
+]
+
 [build-system]
 requires = ["setuptools >= 77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+
+# ================================= COMMITIZEN
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "$version"
+version_scheme = "pep440"
+version_provider = "uv"
+update_changelog_on_bump = true
+major_version_zero = true
+
+# ================================= RUFF
+[tool.ruff]
+# Line length according
+line-length = 120
+
+[tool.ruff.lint]
+preview = true
+extend-select = [
+    "UP", # pyupgrade
+    "D", # pydocstyle
+    "DOC", # pydoclint, requires preview=true
+]
+
+# Ignore rules
+ignore = [
+    "D100", # Missing docstring in public module
+    "D100", # Missing docstring in public module
+    "D101", # Missing docstring in public class
+    "D102", # Missing docstring in public method
+    "D103", # Missing docstring in public function
+    "D104", # Missing docstring in public package
+    "D105", # Missing docstring in magic method,
+    "D205", # 1 blank line required between summary line and description
+    "D401", # First line should be in imperative mood
+    "DOC201",
+    "DOC501"
+]
+
+# Docstring handling
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+# Formatting options
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+# ================================= PYTEST
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+# ================================= COVERAGE
+[tool.coverage.run]
+source = ["src"]

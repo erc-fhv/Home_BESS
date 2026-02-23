@@ -1,0 +1,369 @@
+---
+# Hook stages overview
+# --------------------
+# This repository uses four distinct pre-commit hook stages to control when
+# different checks run:
+# 1) pre-commit: Run at commit time. Fast, file-focused checks (formatters,
+#    syntax checks, lightweight linters). Aim for quick and deterministic
+#    hooks so commits are not blocked for long.
+# 2) commit-msg: Run at commit time to validate the commit message format/style.
+# 3) pre-push: Run at push time. Heavier checks (unit tests, security scans,
+#    long-running validators) that may take longer and should run before code
+#    leaves the local repository.
+# 4) manual: Manual/manual-trigger stage for repository-wide or intrusive tasks
+#    (docformatters, big refactors, one-off fixes). Run with
+#    `pre-commit run --all-files --hook-stage manual`.
+#
+# Quick commands:
+# - Install all default hook types (runs once):
+#     pre-commit install
+# - Run all pre-commit hooks on every file:
+#     pre-commit run --all-files --hook-stage pre-commit
+# - Run all pre-push hooks locally:
+#     pre-commit run --all-files --hook-stage pre-push
+# - Run manual hooks:
+#     pre-commit run --all-files --hook-stage manual
+#
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+minimum_pre_commit_version: 2.20.0
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+fail_fast: false
+exclude: ^(venv|\.venv|build|dist|\.git|data|docs|\.github|openspec)/
+repos:
+  # Local: repository-defined hooks (custom commands used locally)
+#  - repo: local
+#    hooks:
+#  # Purpose: fetch latest changes from origin before committing
+#      - id: pull-before-commit
+#        name: Pull from origin before commit
+#        entry: git pull origin HEAD
+#        language: system
+#        pass_filenames: false
+#        stages: [pre-commit, pre-push, manual]
+
+  # UV: ensure uv.lock and environment sync (uv tool integration)
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.9.27
+    hooks:
+      # Purpose: synchronize uv.lock with pyproject.toml dependencies
+      - id: uv-sync
+        args: [--all-groups, --all-extras]
+        stages: [pre-commit]
+        types: [text]
+      # Purpose: ensure uv.lock stays synchronized
+      - id: uv-lock
+        stages: [pre-commit]
+        types: [text]
+
+  # Sync with uv: helper to synchronize files with uv-managed layout
+  - repo: https://github.com/tsvikas/sync-with-uv
+    rev: v0.5.0
+    hooks:
+      # Purpose: synchronize project files with uv-managed layout
+      - id: sync-with-uv
+        stages: [pre-commit]
+        types: [text]
+
+  # Sync pre-commit dependencies: keep pre-commit deps aligned
+  - repo: https://github.com/pre-commit/sync-pre-commit-deps
+    rev: v0.0.3
+    hooks:
+      # Purpose: normalize/sync pre-commit dependency formatting
+      - id: sync-pre-commit-deps
+        args: [--yaml-mapping, '2', --yaml-sequence, '4', --yaml-offset, '2']
+        stages: [pre-commit]
+        types: [text]
+
+  # Standard pre-commit hooks: common file and repository checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Filesystem
+      # Purpose: detect filenames illegal on Windows
+      - id: check-illegal-windows-names
+        stages: [pre-commit]
+        types: [text]
+      # Purpose: ensure executable files include a shebang
+      - id: check-executables-have-shebangs
+        stages: [pre-commit]
+        types: [text]
+      # Purpose: ensure shebang scripts are executable
+      - id: check-shebang-scripts-are-executable
+        stages: [pre-commit]
+        types: [text]
+      # Git related
+      # Purpose: prevent committing very large files
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+        stages: [pre-commit]
+        types: [text]
+      # Purpose: detect unresolved merge conflict markers
+      - id: check-merge-conflict
+        stages: [pre-commit]
+        types: [text]
+      # Purpose: validate VCS permalinks (repository links)
+      - id: check-vcs-permalinks
+        stages: [pre-commit]
+        types: [text]
+      # Purpose: forbid Git submodules
+      - id: forbid-submodules
+        stages: [pre-commit]
+      # Security
+      # Purpose: detect private keys being committed
+      - id: detect-private-key
+        stages: [pre-commit]
+        types: [text]
+      # Text encoding/formatting
+      # Purpose: ensure files end with a single newline
+      - id: end-of-file-fixer
+        stages: [pre-commit]
+        types: [text]
+      # Purpose: fix/remove byte order markers (BOM)
+      - id: fix-byte-order-marker
+        stages: [pre-commit]
+        types: [text]
+      #      - id: mixed-line-ending
+      # Purpose: trim trailing whitespace from lines
+      - id: trailing-whitespace
+        stages: [pre-commit]
+        types: [text]
+      # Python AST validation
+      # Purpose: check Python syntax/AST validity
+      - id: check-ast
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: detect leftover debug statements (pdb/print)
+      - id: debug-statements
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: enforce test file naming conventions (pytest-first)
+      - id: name-tests-test
+        args: [--pytest-test-first]
+        files: ^tests/.*\.py$
+        stages: [pre-commit]
+      # - id: check-docstring-first
+      # Data files
+      # Purpose: validate JSON syntax
+      - id: check-json
+        stages: [pre-commit]
+        types: [json]
+      # Purpose: validate TOML syntax
+      - id: check-toml
+        stages: [pre-commit]
+        types: [toml]
+      # Purpose: validate XML syntax
+      - id: check-xml
+        stages: [pre-commit]
+        types: [xml]
+      # Purpose: validate YAML syntax
+      - id: check-yaml
+        stages: [pre-commit]
+        types: [yaml]
+      # Symlinks
+      # Purpose: detect symlink issues
+      - id: check-symlinks
+        stages: [pre-commit]
+        types: [text]
+      # Purpose: detect destroyed/broken symlinks
+      - id: destroyed-symlinks
+        stages: [pre-commit]
+        types: [text]
+      # File formatting
+  #      - id: pretty-format-json
+  #        exclude_types: [ jupyter ]
+  #        args: [ --autofix. --no-sort-keys ]
+  #        files: \.json$
+
+  # Python grep-based checks: custom code patterns and anti-patterns
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      # Purpose: detect blanket 'noqa' which hides lint issues
+      - id: python-check-blanket-noqa
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: detect blanket 'type: ignore' which hides type issues
+      - id: python-check-blanket-type-ignore
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: detect incorrect/mock-related anti-patterns
+      - id: python-check-mock-methods
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: forbid use of eval()
+      - id: python-no-eval
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: avoid deprecated logging warnings (e.g., log.warn)
+      - id: python-no-log-warn
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: encourage presence of type annotations
+      - id: python-use-type-annotations
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: RST: flag problematic backticks usage
+      - id: rst-backticks
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: RST: enforce directive colon spacing
+      - id: rst-directive-colons
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: RST inline formatting checks
+      - id: rst-inline-touching-normal
+        stages: [pre-commit]
+        types: [python]
+      # Purpose: detect Unicode replacement characters in text
+      - id: text-unicode-replacement-char
+        stages: [pre-commit]
+        types: [python]
+#  # EditorConfig checker: validate EditorConfig adherence
+#  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+#    rev: 3.6.0
+#    hooks:
+#  # Purpose: verify EditorConfig rules are followed
+#      - id: editorconfig-checker
+#        exclude_types: [jupyter]
+#        stages: [pre-commit]
+#        types: [text]
+
+  # Keep-sorted: ensure lists/entries stay sorted
+  - repo: https://github.com/google/keep-sorted
+    rev: v0.7.1
+    hooks:
+      # Purpose: keep ordered lists or files sorted
+      - id: keep-sorted
+        stages: [pre-commit]
+        types: [text]
+
+  # Typos mirror: spell-checking for repository text
+#  - repo: https://github.com/adhtruong/mirrors-typos
+#    rev: v1.42.3
+#    hooks:
+#  # Purpose: detect common typos and misspellings
+#      - id: typos
+#        stages: [pre-commit]
+#        types: [text]
+
+  # Autotyping: enforce/assist Python type annotation usage
+  - repo: https://github.com/JelleZijlstra/autotyping
+    rev: 24.9.0
+    hooks:
+      # Purpose: add/enforce Python type annotations (manual run)
+      - id: autotyping
+        stages: [manual]
+        types: [python]
+        args: [--safe]
+
+  # Custom linting rules
+#  - repo: local
+#    hooks:
+#  # Purpose: disallow certain capitalizations in code/text
+#      - id: disallow-caps
+#        name: disallow improper capitalization
+#        language: pygrep
+#        entry: PyBind|Numpy|Cmake|CCache|Github|PyTest
+#        exclude: \.pre-commit-config\.yaml
+#        stages: [pre-commit]
+#        types: [text]
+
+  # Docstring formatting
+  - repo: local
+    hooks:
+      # Purpose: reformat package docstrings
+      - id: docformatter
+        stages: [manual]
+        name: docformatter
+        entry: uv run docformatter --in-place --make-summary-multi-line --close-quotes-on-newline
+          --recursive src/eigenalp
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  # Fast Python formatting and linting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.2
+    hooks:
+      # Purpose: run ruff linter and auto-fix issues
+      - id: ruff-check
+        stages: [pre-commit]
+        types_or: [python, pyi]
+        args: [--fix, --unsafe-fixes]
+      # Purpose: format code via ruff
+      - id: ruff-format
+        stages: [pre-commit]
+        types_or: [python, pyi]
+
+  # Validate pyproject: check project configuration schema
+  - repo: https://github.com/henryiii/validate-pyproject-schema-store
+    rev: 2026.01.22
+    hooks:
+      # Purpose: validate pyproject.toml structure against schema
+      - id: validate-pyproject
+        stages: [pre-commit]
+        types: [toml]
+
+  # A simple opinionated yaml formatter that keeps your comments!
+  - repo: https://github.com/lyz-code/yamlfix
+    rev: 1.19.1  # Use the latest stable version
+    # Purpose: format YAML files while preserving comments
+    hooks:
+      - id: yamlfix
+        stages: [pre-commit]
+        files: \.(yaml|yml)$
+        types: [yaml]
+
+  # YAML linter: check YAML files for style and correctness
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      # Purpose: lint YAML files for style/format issues
+      - id: yamllint
+        stages: [pre-commit]
+        args:
+          - '-d {extends: relaxed, rules: {line-length: disable, new-lines: disable}}'
+          - -s
+        files: \.(yaml|yml|yamllint)$
+        types: [yaml]
+
+  # Pydoclint: NumPy-style docstring checks (NumPy style for this project)
+  - repo: https://github.com/jsh9/pydoclint
+    rev: 0.8.3
+    hooks:
+      # Purpose: validate NumPy-style docstrings according to pyproject config
+      - id: pydoclint
+        stages: [manual]
+        args: [--config, ./pyproject.toml]
+        types: [python]
+
+  # Security scanning
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      # Purpose: scan for secrets and credentials in commits
+      - id: gitleaks
+        stages: [pre-commit]
+        types: [text]
+
+  # Commit message validation
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.13.8
+    hooks:
+      # Purpose: enforce/validate commit message format
+      - id: commitizen
+        stages: [commit-msg]
+
+  # Testing and coverage
+  - repo: local
+    hooks:
+      # Purpose: run the project's test suite before pushing
+      - id: pytest
+        stages: [pre-push]
+        name: pytest
+        entry: uv run pytest --cov --cov-report term:skip-covered --cov-fail-under
+          60 -n logical --exitfirst
+        language: system
+        types: [python]
+        pass_filenames: false

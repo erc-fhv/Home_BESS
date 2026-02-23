@@ -1,6 +1,5 @@
-"""Get weather measurements"""
+"""Get weather measurements."""
 
-from time import strftime
 import openmeteo_requests
 import pandas as pd
 import requests_cache
@@ -12,13 +11,13 @@ class WeatherDataRetriever:
 
     @staticmethod
     def retrieve_weather_data(
-        latitude: float = 47.38517, # Bezau
-        longitude: float = 9.895996, # Bezau
+        latitude: float = 47.38517,  # Bezau
+        longitude: float = 9.895996,  # Bezau
         start_date: str | None = None,
         end_date: str | None = None,
         timezone: str = "Europe/Vienna",
         weather_actuality: str = "future_forecast",
-        ) -> pd.DataFrame:
+    ) -> pd.DataFrame:
 
         if start_date is None:
             start_date = pd.Timestamp.now().strftime("%Y-%m-%d")
@@ -26,14 +25,26 @@ class WeatherDataRetriever:
             end_date = (pd.Timestamp.now() + pd.Timedelta(days=2)).strftime("%Y-%m-%d")
 
         # Define the weather features to retrieve.
-        weather_features = ["temperature_2m", "relative_humidity_2m", "shortwave_radiation",
-            "diffuse_radiation", "direct_normal_irradiance", "global_tilted_irradiance",
-            "direct_radiation", "cloud_cover", "wind_speed_10m", "wind_direction_10m",
-            "precipitation"]
+        weather_features = [
+            "temperature_2m",
+            "relative_humidity_2m",
+            "shortwave_radiation",
+            "diffuse_radiation",
+            "direct_normal_irradiance",
+            "global_tilted_irradiance",
+            "direct_radiation",
+            "cloud_cover",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "precipitation",
+        ]
 
         params = {
-            "latitude": latitude, "longitude": longitude,
-            "start_date": start_date, "end_date": end_date, "timezone": timezone,
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": start_date,
+            "end_date": end_date,
+            "timezone": timezone,
             "minutely_15": weather_features,
         }
 
@@ -43,13 +54,14 @@ class WeatherDataRetriever:
             # Note: The historical forecast API provides 15min for historical data.
             url = "https://historical-forecast-api.open-meteo.com/v1/forecast"
         else:
-            raise ValueError(f"Invalid weather_actuality value: {weather_actuality}. "
-                "Expected 'actual' or 'future_forecast'.")
+            raise ValueError(
+                f"Invalid weather_actuality value: {weather_actuality}. Expected 'actual' or 'future_forecast'."
+            )
 
         # Do the API request to retrieve the weather data.
-        cache_session = requests_cache.CachedSession('.cache', expire_after = 3600)
-        retry_session = retry(cache_session, retries = 5, backoff_factor = 0.2)
-        openmeteo = openmeteo_requests.Client(session = retry_session)
+        cache_session = requests_cache.CachedSession(".cache", expire_after=3600)
+        retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+        openmeteo = openmeteo_requests.Client(session=retry_session)
         responses = openmeteo.weather_api(url, params=params)
 
         # Create a DataFrame with the minutely_15 data.
@@ -61,16 +73,14 @@ class WeatherDataRetriever:
             assert act_variables is not None, f"Minutely_15 variable '{param}' is missing."
             data[param] = act_variables.ValuesAsNumpy()
         data["date"] = pd.date_range(
-            start = pd.to_datetime(minutely_15.Time(), unit = "s", utc = True),
-            end =  pd.to_datetime(minutely_15.TimeEnd(), unit = "s", utc = True),
-            freq = pd.Timedelta(seconds = minutely_15.Interval()),
-            inclusive = "left")
-        df = pd.DataFrame(data = data)
+            start=pd.to_datetime(minutely_15.Time(), unit="s", utc=True),
+            end=pd.to_datetime(minutely_15.TimeEnd(), unit="s", utc=True),
+            freq=pd.Timedelta(seconds=minutely_15.Interval()),
+            inclusive="left",
+        )
+        df = pd.DataFrame(data=data)
         df.set_index("date", inplace=True)
 
         # Convert to given timezone
-        assert df.index.tz is not None, \
-            "Minutely_15 DataFrame index must be timezone-aware."
-        df = df.tz_convert(timezone)
-
-        return df
+        assert df.index.tz is not None, "Minutely_15 DataFrame index must be timezone-aware."
+        return df.tz_convert(timezone)

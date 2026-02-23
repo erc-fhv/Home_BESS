@@ -1,7 +1,9 @@
-from pathlib import Path
 import json
-from entsoe import EntsoePandasClient
+from pathlib import Path
+
 import pandas as pd
+from entsoe import EntsoePandasClient
+
 
 class DayAheadPrice:
     """Class to read out day-ahead electricity prices from the ENTSO-E Transparency Platform."""
@@ -12,7 +14,7 @@ class DayAheadPrice:
         start_date: pd.Timestamp | None = None,
         end_date: pd.Timestamp | None = None,
         store_to_file: Path | None = None,
-        ) -> pd.Series:
+    ) -> pd.Series:
 
         # Set default date range to today if not provided
         if start_date is None:

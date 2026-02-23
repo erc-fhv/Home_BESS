@@ -1,25 +1,25 @@
 from pathlib import Path
-import pulp
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from dash import Dash, dcc, html, Input, Output, callback_context, State
-
+import pulp
+from dash import Dash, Input, Output, State, callback_context, dcc, html
 from get_day_ahead_prices import DayAheadPrice
+from plotly.subplots import make_subplots
 
 
 class Bess:
     def __init__(
         self,
-        capacity_kwh: float = 5.12*6,
-        max_charge_kw: float = 4.0*3,
-        max_discharge_kw: float = 4.0*3,
+        capacity_kwh: float = 5.12 * 6,
+        max_charge_kw: float = 4.0 * 3,
+        max_discharge_kw: float = 4.0 * 3,
         soc_min: float = 0.1,
         soc_max: float = 0.9,
-        eta_charge: float = np.sqrt(0.95) * 0.96,       # 95% BESS round-trip efficiency
-        eta_discharge: float = np.sqrt(0.95) * 0.96,    # times 96% inverter power factor
-        ) -> None:
+        eta_charge: float = np.sqrt(0.95) * 0.96,  # 95% BESS round-trip efficiency
+        eta_discharge: float = np.sqrt(0.95) * 0.96,  # times 96% inverter power factor
+    ) -> None:
 
         self.capacity_kwh = capacity_kwh
         self.max_charge_kw = max_charge_kw
@@ -41,13 +41,13 @@ class Bess:
                 start_date=pd.Timestamp("2025-01-01", tz="Europe/Vienna"),
                 end_date=pd.Timestamp("2025-12-24", tz="Europe/Vienna"),
                 store_to_file=file_path,
-                )
+            )
         df_prices_epex = pd.read_csv(file_path, index_col=0)
         df_prices_epex.index = pd.to_datetime(df_prices_epex.index, utc=True)
         df_prices_epex.index = df_prices_epex.index.tz_convert("Europe/Vienna")
         self.prices_epex = df_prices_epex["day_ahead_price_EUR_MWh"]
         self.prices_epex = self.prices_epex / 1000  # Umrechnung in EUR/kWh
-        self.prices_epex = self.prices_epex.resample('15min').ffill()
+        self.prices_epex = self.prices_epex.resample("15min").ffill()
 
         # Energieverbrauchs- und Produktionsdaten einlesen
         self.df_energy = pd.read_csv("../data/energy_data.csv", index_col=0)
@@ -57,13 +57,13 @@ class Bess:
 
     def optimize_day(
         self,
-        price_sell: pd.Series,    # ct/kWh
-        price_buy: pd.Series,     # ct/kWh
-        pv: pd.Series,            # kW
-        load: pd.Series,          # kW
-        soc0: float,              # kWh
+        price_sell: pd.Series,  # ct/kWh
+        price_buy: pd.Series,  # ct/kWh
+        pv: pd.Series,  # kW
+        load: pd.Series,  # kW
+        soc0: float,  # kWh
         verbose: bool = True,
-        ) -> tuple:
+    ) -> tuple:
 
         # Konsistenzcheck
         assert price_sell.index.equals(price_buy.index)
@@ -81,14 +81,14 @@ class Bess:
         model = pulp.LpProblem("DayAheadOpt", pulp.LpMaximize)
 
         # Entscheidungsvariablen
-        p_ch   = pulp.LpVariable.dicts("p_ch", P, 0, self.max_charge_kw)
-        p_dis  = pulp.LpVariable.dicts("p_dis", P, 0, self.max_discharge_kw)
-        soc    = pulp.LpVariable.dicts("soc", T, self.soc_min_kwh, self.soc_max_kwh)
+        p_ch = pulp.LpVariable.dicts("p_ch", P, 0, self.max_charge_kw)
+        p_dis = pulp.LpVariable.dicts("p_dis", P, 0, self.max_discharge_kw)
+        soc = pulp.LpVariable.dicts("soc", T, self.soc_min_kwh, self.soc_max_kwh)
 
         p_sell = pulp.LpVariable.dicts("p_sell", P, 0)
-        p_buy  = pulp.LpVariable.dicts("p_buy", P, 0)
+        p_buy = pulp.LpVariable.dicts("p_buy", P, 0)
 
-        y = pulp.LpVariable.dicts("y", P, 0, 1, cat="Binary")   # Lade-/Entlade-Exklusivität
+        y = pulp.LpVariable.dicts("y", P, 0, 1, cat="Binary")  # Lade-/Entlade-Exklusivität
 
         # Anfangs- und End-SOC festsetzen
         model += soc[0] == soc0
@@ -96,28 +96,21 @@ class Bess:
 
         # Füge SOC Nebenbedingungen hinzu
         for t in range(1, len(T)):
-            model += soc[t] == soc[t-1] + \
-                delta_t * (self.eta_charge * p_ch[t-1] - p_dis[t-1] / self.eta_discharge)
+            model += soc[t] == soc[t - 1] + delta_t * (
+                self.eta_charge * p_ch[t - 1] - p_dis[t - 1] / self.eta_discharge
+            )
 
         # Lade-/Entlade-Exklusivität
         for p in P:
-            model += p_ch[p]  <= self.max_charge_kw * y[p]
+            model += p_ch[p] <= self.max_charge_kw * y[p]
             model += p_dis[p] <= self.max_discharge_kw * (1 - y[p])
 
         # Leistungsbilanz
         for p in P:
-            model += (
-                pv.iloc[p] + p_buy[p] + p_dis[p]
-                ==
-                load.iloc[p] + p_sell[p] + p_ch[p]
-            )
+            model += pv.iloc[p] + p_buy[p] + p_dis[p] == load.iloc[p] + p_sell[p] + p_ch[p]
 
         # Zielfunktion: Erlös – Kosten
-        model += pulp.lpSum(
-            (price_sell.iloc[p] * p_sell[p]
-            - price_buy.iloc[p] * p_buy[p]) * delta_t
-            for p in P
-        )
+        model += pulp.lpSum((price_sell.iloc[p] * p_sell[p] - price_buy.iloc[p] * p_buy[p]) * delta_t for p in P)
 
         model.solve(pulp.PULP_CBC_CMD(msg=False))
         if verbose:
@@ -127,11 +120,11 @@ class Bess:
             print(f"- optimaler Wert: {pulp.value(model.objective)}")
 
         ret_variables = {
-            "soc":    pd.Series([soc[t].value() for t in T], index=time_points),
-            "p_ch":   pd.Series([p_ch[p].value() for p in P], index=time_periods),
-            "p_dis":  pd.Series([p_dis[p].value() for p in P], index=time_periods),
+            "soc": pd.Series([soc[t].value() for t in T], index=time_points),
+            "p_ch": pd.Series([p_ch[p].value() for p in P], index=time_periods),
+            "p_dis": pd.Series([p_dis[p].value() for p in P], index=time_periods),
             "p_sell": pd.Series([p_sell[p].value() for p in P], index=time_periods),
-            "p_buy":  pd.Series([p_buy[p].value() for p in P], index=time_periods),
+            "p_buy": pd.Series([p_buy[p].value() for p in P], index=time_periods),
         }
 
         return ret_variables, model
@@ -141,24 +134,24 @@ class Bess:
         act_day: pd.Timestamp,
         use_dynamic_prices: bool = True,
         verbose: bool = False,
-        ) -> None:
+    ) -> None:
 
         act_range = pd.date_range(
             start=act_day,
             end=act_day + pd.Timedelta(days=1),
-            freq='15min',
+            freq="15min",
             tz="Europe/Vienna",
-            )
+        )
         self.act_prices_epex = self.prices_epex.loc[act_range]
 
         if use_dynamic_prices:
             # VKW dynmaische Preise in EUR/kWh
             self.price_sell = self.act_prices_epex - 0.006
-            self.price_buy  = self.act_prices_epex + 0.0144
+            self.price_buy = self.act_prices_epex + 0.0144
         else:
             # fixe Preise in ct/kWh
             self.price_sell = pd.Series(0.09, index=self.act_prices_epex.index)
-            self.price_buy  = pd.Series(0.1272, index=self.act_prices_epex.index)
+            self.price_buy = pd.Series(0.1272, index=self.act_prices_epex.index)
 
         self.pv = self.df_energy.loc[act_range]["Production"]
         self.load_forecast = self.df_energy.loc[act_range]["Consumption"]
@@ -194,7 +187,8 @@ class Bess:
                 line_shape="hv",
                 name="Epex Preis",
             ),
-            row=1, col=1,
+            row=1,
+            col=1,
         )
 
         fig.add_trace(
@@ -204,7 +198,8 @@ class Bess:
                 line_shape="hv",
                 name="Einspeisepreis",
             ),
-            row=1, col=1,
+            row=1,
+            col=1,
         )
 
         fig.add_trace(
@@ -214,7 +209,8 @@ class Bess:
                 line_shape="hv",
                 name="Bezugspreise",
             ),
-            row=1, col=1,
+            row=1,
+            col=1,
         )
 
         fig.add_trace(
@@ -224,7 +220,8 @@ class Bess:
                 line_shape="hv",
                 name="PV-Erzeugung",
             ),
-            row=2, col=1,
+            row=2,
+            col=1,
         )
 
         fig.add_trace(
@@ -234,7 +231,8 @@ class Bess:
                 line_shape="hv",
                 name="Last",
             ),
-            row=2, col=1,
+            row=2,
+            col=1,
         )
 
         soc_percent = 100 * self.lp_result["soc"] / self.capacity_kwh
@@ -245,7 +243,8 @@ class Bess:
                 line_shape="hv",
                 name="SOC",
             ),
-            row=3, col=1,
+            row=3,
+            col=1,
         )
 
         fig.add_trace(
@@ -255,7 +254,8 @@ class Bess:
                 line_shape="hv",
                 name="Einspeisung",
             ),
-            row=4, col=1,
+            row=4,
+            col=1,
         )
 
         fig.add_trace(
@@ -265,7 +265,8 @@ class Bess:
                 line_shape="hv",
                 name="Bezug",
             ),
-            row=4, col=1,
+            row=4,
+            col=1,
         )
 
         fig.add_trace(
@@ -275,7 +276,8 @@ class Bess:
                 line_shape="hv",
                 name="Laden",
             ),
-            row=5, col=1,
+            row=5,
+            col=1,
         )
 
         fig.add_trace(
@@ -285,7 +287,8 @@ class Bess:
                 line_shape="hv",
                 name="Entladen",
             ),
-            row=5, col=1,
+            row=5,
+            col=1,
         )
 
         fig.update_layout(
@@ -304,46 +307,51 @@ class Bess:
         # --- Y-Achsen hinzufügen ---
         fig.update_yaxes(
             title_text="Preis [EUR/kWh]",
-            row=1, col=1,
+            row=1,
+            col=1,
         )
 
         fig.update_yaxes(
             title_text="Leistung [kW]",
-            row=2, col=1,
+            row=2,
+            col=1,
         )
 
         fig.update_yaxes(
             title_text="SOC [%]",
             range=[0, 100],
-            row=3, col=1,
+            row=3,
+            col=1,
         )
 
         fig.update_yaxes(
             title_text="Leistung [kW]",
-            row=4, col=1,
+            row=4,
+            col=1,
         )
 
         fig.update_yaxes(
             title_text="Batterie Laden [kW]",
-            row=5, col=1,
+            row=5,
+            col=1,
         )
 
-        # Anzeige des aktuellen Objective-Werts (falls verfügbar) oben rechts
-        try:
-            objective_value = pulp.value(self.pulp_model.objective)
-            fig.add_annotation(
-                x=1.0,
-                y=1.02,
-                xref="paper",
-                yref="paper",
-                text=f"Objective: {objective_value:.2f} EUR",
-                showarrow=False,
-                align="right",
-                font=dict(size=12, color="black"),
-            )
-        except Exception:
-            # Falls das Modell noch nicht gesetzt ist, nichts tun
-            pass
+        # # Anzeige des aktuellen Objective-Werts (falls verfügbar) oben rechts
+        # try:
+        objective_value = pulp.value(self.pulp_model.objective)
+        fig.add_annotation(
+            x=1.0,
+            y=1.02,
+            xref="paper",
+            yref="paper",
+            text=f"Objective: {objective_value:.2f} EUR",
+            showarrow=False,
+            align="right",
+            font={"size": 12, "color": "black"},
+        )
+        # except Exception:
+        #     # Falls das Modell noch nicht gesetzt ist, nichts tun
+        #     pass
 
         return fig
 
@@ -351,14 +359,13 @@ class Bess:
         self,
         use_dynamic_prices: bool = True,
         port: int = 8050,
-        ) -> None:
+    ) -> None:
 
         app = Dash(__name__)
 
         app.layout = html.Div(
             [
                 html.H3("Batterie-Optimierung – Tagesauswahl"),
-
                 html.Div(
                     [
                         html.Button("◀", id="prev-day", n_clicks=0),
@@ -378,7 +385,6 @@ class Bess:
                         "marginBottom": "10px",
                     },
                 ),
-
                 dcc.Graph(id="result-graph"),
             ],
             style={"width": "1200px", "margin": "auto"},
