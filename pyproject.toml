@@ -24,7 +24,8 @@ dependencies = [
     "openmeteo_requests",
     "requests-cache",
     "retry-requests",
-    "loadforecasting_models"
+    "loadforecasting-models",
+    "ipywidgets"
 ]
 
 [build-system]

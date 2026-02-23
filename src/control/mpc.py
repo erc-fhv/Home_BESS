@@ -2,7 +2,7 @@ import time
 
 from mqtt import Victron_Mqtt_Reader
 from get_day_ahead_prices import DayAheadPrice
-from get_weather_data import WeatherDataRetriever
+from interfaces.get_weather_data import WeatherDataRetriever
 
 class MpcController:
     def __init__(self):
@@ -22,14 +22,16 @@ class MpcController:
 
                 # --- Run every 15 minutes ---
                 if current_time < next_exec_time:
+
                     next_exec_time += update_interval
 
                     act_soc = self.victron_mqtt_reader.get_latest_value("soc")
-                    print(f"Current SOC: {act_soc:.2f}%")
-
                     prices = DayAheadPrice.get_prices()
-
                     weather_data = WeatherDataRetriever.retrieve_weather_data()
+
+
+
+
 
 
                     return
