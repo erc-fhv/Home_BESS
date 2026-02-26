@@ -3,6 +3,7 @@ import time
 from mqtt import Victron_Mqtt_Reader
 from get_day_ahead_prices import DayAheadPrice
 from interfaces.get_weather_data import WeatherDataRetriever
+from forecasting.forecasting import ForecastingModel
 
 class MpcController:
     def __init__(self):
@@ -29,7 +30,7 @@ class MpcController:
                     prices = DayAheadPrice.get_prices()
                     weather_data = WeatherDataRetriever.retrieve_weather_data()
 
-
+                    netload_forecast = ForecastingModel().predict(weather_data)
 
 
 
