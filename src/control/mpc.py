@@ -1,5 +1,6 @@
 from logging import config
 import time
+import pandas as pd
 
 from interfaces.mqtt import Victron_Mqtt_Reader
 from interfaces.get_day_ahead_prices import DayAheadPrice
@@ -9,15 +10,12 @@ from control.config import MpcConfig
 from control.optimize import BessOptimizer
 
 class MpcController:
-    def __init__(self, my_config: MpcConfig = MpcConfig()):
-        self.victron_mqtt_reader = None
-        self.config = my_config
 
-    def run(self):
+    def run(self, my_config: MpcConfig = MpcConfig()):
 
         # Prepare main loop
-        next_exec_time = time.monotonic() + self.config.update_interval_sec
-        self.victron_mqtt_reader = Victron_Mqtt_Reader()
+        next_exec_time = time.monotonic() + my_config.update_interval_sec
+        victron_mqtt_reader = Victron_Mqtt_Reader()
         my_forecaster = ForecastingModel()
         my_optimizer = BessOptimizer()
 
@@ -28,32 +26,34 @@ class MpcController:
                 # --- Run every 15 minutes ---
                 if current_time < next_exec_time:
 
-                    next_exec_time += self.config.update_interval_sec
+                    next_exec_time += my_config.update_interval_sec
 
-                    act_soc = self.victron_mqtt_reader.get_latest_value("soc")
+                    act_soc_percent = victron_mqtt_reader.get_latest_value("soc_percent")
 
-                    price_sell, price_buy = DayAheadPrice.get_prices("vkw")
+                    price_sell_eur_kwh, price_buy_eur_kwh = DayAheadPrice.get_prices("vkw_dyn")
 
-                    weather_data = WeatherDataRetriever.retrieve_weather_data()
+                    assert isinstance(price_sell_eur_kwh.index, pd.DatetimeIndex)
+                    weather_data = WeatherDataRetriever.retrieve_weather_data(
+                        time_range = price_sell_eur_kwh.index)
 
-                    netload_forecast = my_forecaster.predict(weather_data)
+                    netload_forecast_kw = my_forecaster.predict(weather_data)
 
                     optimization_results = my_optimizer.optimize(
-                        my_config=self.config,
-                        price_sell_ct_kwh=price_sell,
-                        price_buy_ct_kwh=price_buy,
-                        net_load_kw=netload_forecast,
-                        soc_init_percent=act_soc,
+                        my_config=my_config,
+                        price_sell_eur_kwh=price_sell_eur_kwh,
+                        price_buy_eur_kwh=price_buy_eur_kwh,
+                        net_load_kw=netload_forecast_kw,
+                        soc_init_percent=act_soc_percent,
                         verbose=True,
                         )
 
-                    set_netload = (
-                        netload_forecast[0] +
-                        optimization_results["p_ch"][0]
-                        - optimization_results["p_dis"][0]
+                    set_netload_kw = (
+                        netload_forecast_kw.iloc[0] +
+                        optimization_results["p_ch_kw"].iloc[0]
+                        - optimization_results["p_dis_kw"].iloc[0]
                         )
 
-                    self.victron_mqtt_reader.set_netload(set_netload)
+                    victron_mqtt_reader.set_netload(set_netload_kw)
 
             except KeyboardInterrupt:
                 print("MPC Controller stopped.")

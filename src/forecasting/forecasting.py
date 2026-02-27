@@ -10,7 +10,10 @@ import interfaces.get_weather_data as get_weather_data
 from loadforecasting_models import Gam
 
 class ForecastingModel:
-    def __init__(self, filename="gam_model.pkl"):
+    def __init__(self, filename:str=""):
+
+        if filename == "":
+            filename = Path(__file__).parent / "gam_model.pkl"
 
         self.model_filename = filename
         self.lagged_power = 7*24*4    # 7 Tage * 24 Stunden * 4 (15-Minuten-Intervalle)
@@ -30,6 +33,7 @@ class ForecastingModel:
         features_df, _ = self.create_feature_df(weather_data)
 
         x = features_df.values
+        print("molu:", x.shape)
         prediction = model.predict(x)
 
         return pd.Series(prediction, index=features_df.index)
@@ -61,13 +65,12 @@ class ForecastingModel:
         df_load.index = pd.to_datetime(df_load.index, utc=True)
         df_load.index = df_load.index.tz_convert('Europe/Vienna')
         net_load_profile = df_load['Consumption'] - df_load['Production']
-        net_load_profile = net_load_profile / 1000.0  # Umrechnung in kW
+        net_load_profile = net_load_profile / 1000.0  # Convert from [W] to [kW]
         net_load_profile = net_load_profile['2025-01-01':'2025-12-31']
 
         # Read in the historic weather data
         weather_data = get_weather_data.WeatherDataRetriever().retrieve_weather_data(
-            start_date="2025-01-01",
-            end_date="2025-12-31",
+            time_range=net_load_profile.index,
             weather_actuality="actual",
             )
 

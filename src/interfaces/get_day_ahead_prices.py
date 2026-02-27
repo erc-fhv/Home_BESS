@@ -16,13 +16,13 @@ class DayAheadPrice:
 
         # Set default date range to today if not provided
         if start_date is None:
-            start_date = pd.Timestamp.now(tz="Europe/Vienna").normalize()
+            start_date = pd.Timestamp.now(tz="Europe/Vienna")
         if end_date is None:
             # Price horizon is max. 1.5 days, so 2 days ensures we get all relevant prices
             end_date = start_date + pd.Timedelta(days=2)
 
         # Get the API key
-        pw_file = Path.cwd().parent.parent / ".json"
+        pw_file = Path(__file__).parent.parent.parent.parent / ".json"
         with open(pw_file, encoding="utf-8") as f:
             my_file = json.load(f)
         api_key = my_file["ENTSOE_API_KEY"]
@@ -38,33 +38,37 @@ class DayAheadPrice:
         # Check the returned data
         assert isinstance(prices.index, pd.DatetimeIndex), \
             f"Expected DatetimeIndex, got {type(prices.index)}"
-        assert prices.index.tz is not None and prices.index.tz.zone == "Europe/Vienna", \
+        assert prices.index.tz is not None and str(prices.index.tz) == "Europe/Vienna", \
             f"Expected timezone 'Europe/Vienna', got {prices.index.tz}"
-        assert prices.index.freq == pd.Timedelta(minutes=15), \
-            f"Expected frequency of 15 minutes, got {prices.index.freq}"
+        median_freq = prices.index.to_series().diff().median()
+        assert median_freq == pd.Timedelta(minutes=15), \
+            f"Expected frequency of 15 minutes, got {median_freq}"
 
         # Convert prices from EUR/MWh to EUR/kWh
-        prices = prices["day_ahead_price_EUR_MWh"] / 1000
+        prices = prices / 1000.0
 
         # Save to CSV if file path is provided
         if store_to_file is not None:
             prices.index.name = "timestamp"
-            prices.name = "day_ahead_price_EUR_kWh"
+            prices.name = "day_ahead_price_eur_kWh"
             prices.to_csv(store_to_file)
 
         return prices
 
     @staticmethod
-    def get_prices(price_type:str) -> tuple[pd.Series, pd.Series]:
+    def get_prices(
+        price_type:str,
+        store_to_file: Path | None = None,
+        ) -> tuple[pd.Series, pd.Series]:
         """Define sell and buy prices (in EUR/kWh)"""
 
         price_type = price_type.lower()
-        epex_prices = DayAheadPrice.get_epex_prices()
+        epex_prices = DayAheadPrice.get_epex_prices(store_to_file=store_to_file)
 
         if price_type == "vkw_dyn":
-            price_sell = epex_prices - 0.006  # Subtract 6 ct/kWh for selling
-            price_buy = epex_prices + 0.0144  # Add 14.4 ct/kWh for buying
-        if price_type == "vkw_fix":
+            price_sell = epex_prices - 0.006  # Subtract 0.6 ct/kWh for selling
+            price_buy = epex_prices + 0.0144  # Add 1.44 ct/kWh for buying
+        elif price_type == "vkw_fix":
             price_sell = pd.Series(0.09, index=epex_prices.index)
             price_buy  = pd.Series(0.1272, index=epex_prices.index)
         else:

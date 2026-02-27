@@ -12,19 +12,19 @@ class BessOptimizer:
     def optimize(
         self,
         my_config: MpcConfig,
-        price_sell_ct_kwh: pd.Series,
-        price_buy_ct_kwh: pd.Series,
+        price_sell_eur_kwh: pd.Series,
+        price_buy_eur_kwh: pd.Series,
         net_load_kw: pd.Series,
         soc_init_percent: float,
         verbose: bool = True,
         ) -> dict[str, pd.Series]:
 
         # Konsistenzcheck
-        assert price_sell_ct_kwh.index.equals(price_buy_ct_kwh.index)
-        assert price_buy_ct_kwh.index.equals(net_load_kw.index)
+        assert price_sell_eur_kwh.index.equals(price_buy_eur_kwh.index)
+        assert price_buy_eur_kwh.index.equals(net_load_kw.index)
 
         # Definiere Zeitindex und Parameter
-        time_points = price_sell_ct_kwh.index
+        time_points = price_sell_eur_kwh.index
         T = range(len(time_points))
         time_periods = time_points[:-1]
         P = range(len(time_periods))
@@ -34,41 +34,43 @@ class BessOptimizer:
         model = pulp.LpProblem("DayAheadOpt", pulp.LpMaximize)
 
         # Entscheidungsvariablen
-        p_ch   = pulp.LpVariable.dicts("p_ch", P, 0, my_config.max_charge_kw)
-        p_dis  = pulp.LpVariable.dicts("p_dis", P, 0, my_config.max_discharge_kw)
-        soc    = pulp.LpVariable.dicts("soc", T, my_config.soc_min_percent * my_config.capacity_kwh / 100.0, my_config.capacity_kwh)
-        p_sell = pulp.LpVariable.dicts("p_sell", P, 0)
-        p_buy  = pulp.LpVariable.dicts("p_buy", P, 0)
+        p_ch_kw   = pulp.LpVariable.dicts("p_ch", P, 0, my_config.max_charge_kw)
+        p_dis_kw  = pulp.LpVariable.dicts("p_dis", P, 0, my_config.max_discharge_kw)
+        soc_kwh    = pulp.LpVariable.dicts("soc", T, \
+            my_config.soc_min_percent * my_config.capacity_kwh / 100.0, my_config.capacity_kwh)
+        p_sell_kw = pulp.LpVariable.dicts("p_sell", P, 0)
+        p_buy_kw  = pulp.LpVariable.dicts("p_buy", P, 0)
         y = pulp.LpVariable.dicts("y", P, 0, 1, cat="Binary")   # Lade-/Entlade-Exklusivität
 
         # Anfangs- und End-SOC festsetzen
         soc_init_kwh = soc_init_percent * my_config.capacity_kwh / 100.0
         soc_final_kwh = my_config.soc_final_percent * my_config.capacity_kwh / 100.0
-        model += soc[0] == soc_init_kwh
-        model += soc[T[-1]] == soc_final_kwh
+        model += soc_kwh[0] == soc_init_kwh
+        model += soc_kwh[T[-1]] == soc_final_kwh
 
         # Füge SOC Nebenbedingungen hinzu
         for t in range(1, len(T)):
-            model += soc[t] == soc[t-1] + \
-                delta_t * (my_config.eta_charge * p_ch[t-1] - p_dis[t-1] / my_config.eta_discharge)
+            model += soc_kwh[t] == soc_kwh[t-1] + \
+                delta_t * (my_config.eta_charge * p_ch_kw[t-1] - p_dis_kw[t-1] \
+                / my_config.eta_discharge)
 
         # Lade-/Entlade-Exklusivität
         for p in P:
-            model += p_ch[p]  <= my_config.max_charge_kw * y[p]
-            model += p_dis[p] <= my_config.max_discharge_kw * (1 - y[p])
+            model += p_ch_kw[p]  <= my_config.max_charge_kw * y[p]
+            model += p_dis_kw[p] <= my_config.max_discharge_kw * (1 - y[p])
 
         # Leistungsbilanz
         for p in P:
             model += (
-                p_buy[p] + p_dis[p]
+                p_buy_kw[p] + p_dis_kw[p]
                 ==
-                net_load_kw.iloc[p] + p_sell[p] + p_ch[p]
+                net_load_kw.iloc[p] + p_sell_kw[p] + p_ch_kw[p]
             )
 
         # Zielfunktion: Erlös – Kosten
         model += pulp.lpSum(
-            (price_sell_ct_kwh.iloc[p] * p_sell[p]
-            - price_buy_ct_kwh.iloc[p] * p_buy[p]) * delta_t
+            (price_sell_eur_kwh.iloc[p] * p_sell_kw[p]
+            - price_buy_eur_kwh.iloc[p] * p_buy_kw[p]) * delta_t
             for p in P
         )
 
@@ -80,11 +82,11 @@ class BessOptimizer:
             print(f"- optimaler Wert: {pulp.value(model.objective)}")
 
         optimization_results = {
-            "soc":    pd.Series([soc[t].value() for t in T], index=time_points),
-            "p_ch":   pd.Series([p_ch[p].value() for p in P], index=time_periods),
-            "p_dis":  pd.Series([p_dis[p].value() for p in P], index=time_periods),
-            "p_sell": pd.Series([p_sell[p].value() for p in P], index=time_periods),
-            "p_buy":  pd.Series([p_buy[p].value() for p in P], index=time_periods),
+            "soc_kwh":   pd.Series([soc_kwh[t].value() for t in T], index=time_points),
+            "p_ch_kw":   pd.Series([p_ch_kw[p].value() for p in P], index=time_periods),
+            "p_dis_kw":  pd.Series([p_dis_kw[p].value() for p in P], index=time_periods),
+            "p_sell_kw": pd.Series([p_sell_kw[p].value() for p in P], index=time_periods),
+            "p_buy_kw":  pd.Series([p_buy_kw[p].value() for p in P], index=time_periods),
         }
 
         return optimization_results

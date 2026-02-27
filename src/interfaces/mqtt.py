@@ -11,7 +11,7 @@ class Victron_Mqtt_Reader:
     def __init__(self):
 
         # Define MQTT connection parameters
-        pw_file = Path.cwd().parent.parent / ".json"
+        pw_file = Path(__file__).parent.parent.parent.parent / ".json"
         with open(pw_file, encoding="utf-8") as f:
             my_file = json.load(f)
         self.portal_id = my_file["PORTAL_ID"]
@@ -23,7 +23,7 @@ class Victron_Mqtt_Reader:
         self.latest_packets = {}
 
         self.topics = {
-            "soc": f"N/{self.portal_id}/battery/512/Soc",
+            "soc_percent": f"N/{self.portal_id}/battery/512/Soc",
         }
 
         self.connect()
@@ -36,8 +36,9 @@ class Victron_Mqtt_Reader:
             protocol=mqtt.MQTTv311,
         )
         self.client.username_pw_set(self.username, self.pw)
+        cert_file = Path(__file__).parent / "venus-ca.crt"
         self.client.tls_set(
-            ca_certs="../data/venus-ca.crt",  # Victron CA certificate
+            ca_certs= str(cert_file),  # Victron CA certificate
             cert_reqs=ssl.CERT_REQUIRED
         )
         self.client.tls_insecure_set(False)
@@ -67,7 +68,7 @@ class Victron_Mqtt_Reader:
 
     def get_latest_value(self, value_type:str, timeout_sec:int=10):
         """
-        Return the latest value to a given topic, e.g. "soc".
+        Return the latest value to a given topic, e.g. "soc_percent".
         """
 
         if value_type not in self.topics:
@@ -106,5 +107,5 @@ class Victron_Mqtt_Reader:
 
 if __name__ == "__main__":
     mqtt_reader = Victron_Mqtt_Reader()
-    latest_soc = mqtt_reader.get_latest_value("soc")
-    print(f"Latest SOC: {latest_soc}")
+    latest_soc_percent = mqtt_reader.get_latest_value("soc_percent")
+    print(f"Latest SOC Percent: {latest_soc_percent}")
