@@ -98,13 +98,13 @@ class Victron_Mqtt_Reader:
 
     def set_netload(
         self,
-        netload_kw:float,
-        set_to_default:bool=True,
+        netload_kw:float | None = None,
         verbose:bool=True,
         ):
         """Set the net load (in kW) on the Victron system via MQTT."""
 
-        if set_to_default:
+        if netload_kw is None:
+            # Set to default = 50W
             netload_kw = 0.05
 
         if verbose:

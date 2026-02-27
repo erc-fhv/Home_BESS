@@ -1,4 +1,4 @@
-from logging import config
+from pathlib import Path
 import time
 import pandas as pd
 
@@ -33,6 +33,7 @@ class MpcController:
                     price_sell_eur_kwh, price_buy_eur_kwh = DayAheadPrice.get_prices("vkw_dyn")
 
                     assert isinstance(price_sell_eur_kwh.index, pd.DatetimeIndex)
+
                     weather_data = WeatherDataRetriever.retrieve_weather_data(
                         time_range = price_sell_eur_kwh.index)
 
@@ -48,15 +49,27 @@ class MpcController:
                         )
 
                     set_netload_kw = (
-                        netload_forecast_kw.iloc[0] +
-                        optimization_results["p_ch_kw"].iloc[0]
-                        - optimization_results["p_dis_kw"].iloc[0]
+                        netload_forecast_kw +
+                        optimization_results["p_ch_kw"]
+                        - optimization_results["p_dis_kw"]
                         )
 
-                    set_netload_kw = 0.6
-                    victron_mqtt_reader.set_netload(set_netload_kw, set_to_default=True)
+                    victron_mqtt_reader.set_netload(netload_kw=set_netload_kw.iloc[0])
 
-                time.sleep(0.5)  # prevent CPU overload
+                    # Save results for analysis
+                    results_df = pd.DataFrame({
+                        "netload_forecast_kw": netload_forecast_kw,
+                        "set_netload_kw": set_netload_kw,
+                        "p_ch_kw": optimization_results["p_ch_kw"],
+                        "p_dis_kw": optimization_results["p_dis_kw"],
+                        "price_sell_eur_kwh": price_sell_eur_kwh,
+                        "price_buy_eur_kwh": price_buy_eur_kwh,
+                    })
+                    results_df.to_parquet(Path(__file__).parent / "mpc_results.parquet")
+
+                    print("--- MPC Controller iteration completed. Next update in 15 minutes. ---")
+
+                time.sleep(1)  # prevent CPU overload
 
             except KeyboardInterrupt:
                 print("MPC Controller stopped.")
