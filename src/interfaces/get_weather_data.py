@@ -14,16 +14,16 @@ class WeatherDataRetriever:
     def retrieve_weather_data(
         latitude: float = 47.38517, # Bezau
         longitude: float = 9.895996, # Bezau
-        start_date: str | None = None,
-        end_date: str | None = None,
+        start_date: pd.Timestamp | None = None,
+        end_date: pd.Timestamp | None = None,
         timezone: str = "Europe/Vienna",
         weather_actuality: str = "future_forecast",
         ) -> pd.DataFrame:
 
         if start_date is None:
-            start_date = pd.Timestamp.now().strftime("%Y-%m-%d")
+            start_date = pd.Timestamp.now()
         if end_date is None:
-            end_date = (pd.Timestamp.now() + pd.Timedelta(days=2)).strftime("%Y-%m-%d")
+            end_date = start_date + pd.Timedelta(days=2)
 
         # Define the weather features to retrieve.
         weather_features = ["temperature_2m", "relative_humidity_2m", "shortwave_radiation",
@@ -32,8 +32,11 @@ class WeatherDataRetriever:
             "precipitation"]
 
         params = {
-            "latitude": latitude, "longitude": longitude,
-            "start_date": start_date, "end_date": end_date, "timezone": timezone,
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": start_date.strftime("%Y-%m-%d"),
+            "end_date": end_date.strftime("%Y-%m-%d"),
+            "timezone": timezone,
             "minutely_15": weather_features,
         }
 
@@ -72,5 +75,8 @@ class WeatherDataRetriever:
         assert df.index.tz is not None, \
             "Minutely_15 DataFrame index must be timezone-aware."
         df = df.tz_convert(timezone)
+
+        # Filter to the given date range
+        df = df.loc[start_date:end_date]
 
         return df

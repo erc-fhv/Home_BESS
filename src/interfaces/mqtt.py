@@ -94,6 +94,16 @@ class Victron_Mqtt_Reader:
         payload = json.dumps({"keepalive-options": ["full"]})
         client.publish(self.keepalive_topic, payload)
 
+    def set_netload(self, netload_kw:float):
+        """Set the net load (in kW) on the Victron system via MQTT."""
+
+        netload_kw_per_phase = netload_kw / 3.0
+
+        for phase in range(1, 4):
+            topic = f"W/{self.portal_id}/vebus/274/Hub4/L{phase}/AcPowerSetpoint"
+            payload = json.dumps({"value": netload_kw_per_phase})
+            self.client.publish(topic, payload)
+
 if __name__ == "__main__":
     mqtt_reader = Victron_Mqtt_Reader()
     latest_soc = mqtt_reader.get_latest_value("soc")
