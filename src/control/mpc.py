@@ -14,7 +14,7 @@ class MpcController:
     def run(self, my_config: MpcConfig = MpcConfig()):
 
         # Prepare main loop
-        next_exec_time = time.monotonic() + my_config.update_interval_sec
+        next_exec_time = time.monotonic()
         victron_mqtt_reader = Victron_Mqtt_Reader()
         my_forecaster = ForecastingModel()
         my_optimizer = BessOptimizer()
@@ -24,7 +24,7 @@ class MpcController:
                 current_time = time.monotonic()
 
                 # --- Run every 15 minutes ---
-                if current_time < next_exec_time:
+                if current_time >= next_exec_time:
 
                     next_exec_time += my_config.update_interval_sec
 
@@ -53,7 +53,10 @@ class MpcController:
                         - optimization_results["p_dis_kw"].iloc[0]
                         )
 
-                    victron_mqtt_reader.set_netload(set_netload_kw)
+                    set_netload_kw = 0.6
+                    victron_mqtt_reader.set_netload(set_netload_kw, set_to_default=True)
+
+                time.sleep(0.5)  # prevent CPU overload
 
             except KeyboardInterrupt:
                 print("MPC Controller stopped.")

@@ -19,11 +19,12 @@ class Victron_Mqtt_Reader:
         self.pw = my_file["VR_PW"]
         self.broker = "mqtt.victronenergy.com"
         self.port = 8883
-        self.keepalive_topic = f"R/{self.portal_id}/keepalive"
         self.latest_packets = {}
 
         self.topics = {
             "soc_percent": f"N/{self.portal_id}/battery/512/Soc",
+            "keepalive": f"R/{self.portal_id}/keepalive",
+            "netload": f"W/{self.portal_id}/settings/0/Settings/CGwacs/AcPowerSetPoint",
         }
 
         self.connect()
@@ -93,20 +94,26 @@ class Victron_Mqtt_Reader:
     def send_keepalive(self, client):
         """Victron MQTT requires a keepalive message to trigger the data flow."""
         payload = json.dumps({"keepalive-options": ["full"]})
-        client.publish(self.keepalive_topic, payload)
+        client.publish(self.topics["keepalive"], payload)
 
-    def set_netload(self, netload_kw:float, verbose:bool=True):
+    def set_netload(
+        self,
+        netload_kw:float,
+        set_to_default:bool=True,
+        verbose:bool=True,
+        ):
         """Set the net load (in kW) on the Victron system via MQTT."""
+
+        if set_to_default:
+            netload_kw = 0.05
 
         if verbose:
             print(f"Setting net load to {netload_kw:.2f} kW (forecast: {netload_kw:.2f} kW)")
 
-        netload_kw_per_phase = netload_kw / 3.0
+        netload_w = netload_kw * 1000.0  # Convert from kW to W
 
-        for phase in range(1, 4):
-            topic = f"W/{self.portal_id}/vebus/274/Hub4/L{phase}/AcPowerSetpoint"
-            payload = json.dumps({"value": netload_kw_per_phase})
-            self.client.publish(topic, payload)
+        payload = json.dumps({"value": netload_w})
+        self.client.publish(self.topics["netload"], payload)
 
 if __name__ == "__main__":
     mqtt_reader = Victron_Mqtt_Reader()

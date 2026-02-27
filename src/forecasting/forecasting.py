@@ -33,7 +33,6 @@ class ForecastingModel:
         features_df, _ = self.create_feature_df(weather_data)
 
         x = features_df.values
-        print("molu:", x.shape)
         prediction = model.predict(x)
 
         return pd.Series(prediction, index=features_df.index)
