@@ -95,8 +95,11 @@ class Victron_Mqtt_Reader:
         payload = json.dumps({"keepalive-options": ["full"]})
         client.publish(self.keepalive_topic, payload)
 
-    def set_netload(self, netload_kw:float):
+    def set_netload(self, netload_kw:float, verbose:bool=True):
         """Set the net load (in kW) on the Victron system via MQTT."""
+
+        if verbose:
+            print(f"Setting net load to {netload_kw:.2f} kW (forecast: {netload_kw:.2f} kW)")
 
         netload_kw_per_phase = netload_kw / 3.0
 
