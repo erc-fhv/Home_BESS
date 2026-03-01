@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from dash import Dash, dcc, html, Input, Output, callback_context, State
 
-from get_day_ahead_prices import DayAheadPrice
+from interfaces.get_day_ahead_prices import DayAheadPrice
 
 
 class Bess:
@@ -34,9 +34,9 @@ class Bess:
         self.price_buy = pd.Series()
 
         # Epex Preise einlesen
-        file_path = Path("../data/day_ahead_prices.csv")
+        file_path = Path(__file__).parent/ "output" / "epex_prices.csv"
         if not file_path.exists():
-            DayAheadPrice.get_prices(
+            DayAheadPrice.get_epex_prices(
                 country_code="AT",
                 start_date=pd.Timestamp("2025-01-01", tz="Europe/Vienna"),
                 end_date=pd.Timestamp("2025-12-24", tz="Europe/Vienna"),
@@ -45,12 +45,13 @@ class Bess:
         df_prices_epex = pd.read_csv(file_path, index_col=0)
         df_prices_epex.index = pd.to_datetime(df_prices_epex.index, utc=True)
         df_prices_epex.index = df_prices_epex.index.tz_convert("Europe/Vienna")
-        self.prices_epex = df_prices_epex["day_ahead_price_EUR_MWh"]
-        self.prices_epex = self.prices_epex / 1000  # Umrechnung in EUR/kWh
+        self.prices_epex = df_prices_epex["day_ahead_price_eur_kWh"]
         self.prices_epex = self.prices_epex.resample('15min').ffill()
 
         # Energieverbrauchs- und Produktionsdaten einlesen
-        self.df_energy = pd.read_csv("../data/energy_data.csv", index_col=0)
+        # todo: automatisch einlesen, falls nicht vorhanden.
+        file_path = Path(__file__).parent / "output" / "energy_data.csv"
+        self.df_energy = pd.read_csv(file_path, index_col=0)
         self.df_energy.index = pd.to_datetime(self.df_energy.index, utc=True)
         self.df_energy.index = self.df_energy.index.tz_convert("Europe/Vienna")
         self.df_energy = self.df_energy / 1000.0  # Umrechnung in kW
@@ -352,6 +353,8 @@ class Bess:
         use_dynamic_prices: bool = True,
         port: int = 8050,
         ) -> None:
+
+        print(f"Dash app running on http://127.0.0.1:{port}")
 
         app = Dash(__name__)
 

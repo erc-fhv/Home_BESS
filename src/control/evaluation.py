@@ -1,9 +1,8 @@
 from pathlib import Path
 
-import ipywidgets as widgets
 import pandas as pd
 import plotly.graph_objects as go
-from IPython.display import display
+from dash import Dash, Input, Output, dcc, html
 from plotly.subplots import make_subplots
 
 
@@ -11,69 +10,97 @@ class MpcEvaluationDashboard:
 	def __init__(self, output_dir: str | Path = "output", file_pattern: str = "mpc_results_*.parquet") -> None:
 		self.output_dir = Path(output_dir)
 		self.file_pattern = file_pattern
-		self.state: dict[str, pd.DataFrame | None] = {"df": None}
+		self._df_cache: dict[str, pd.DataFrame] = {}
 
-		self.file_dropdown = widgets.Dropdown(
-			options=[],
-			description="Parquet:",
-			layout=widgets.Layout(width="900px"),
-		)
-		self.mpc_time_dropdown = widgets.Dropdown(
-			options=[],
-			description="mpc_time:",
-			layout=widgets.Layout(width="400px"),
-		)
-		self.plot_output = widgets.Output()
-
-	def show(self) -> None:
+	def _get_file_options_and_default(self) -> tuple[list[dict[str, str]], str]:
 		parquet_files = sorted(self.output_dir.glob(self.file_pattern))
 		if not parquet_files:
 			raise FileNotFoundError(
-				f"No parquet files found in output/ matching pattern '{self.file_pattern}'"
+				f"No parquet files found in {self.output_dir}/ matching pattern '{self.file_pattern}'"
 			)
 
-		default_file = max(parquet_files, key=lambda path: path.stat().st_mtime).resolve()
-		file_options = [str(path.resolve()) for path in parquet_files]
-
-		self.file_dropdown.options = file_options
-		self.file_dropdown.value = str(default_file)
-
-		self.file_dropdown.observe(self._on_file_change, names="value")
-		self.mpc_time_dropdown.observe(self._render_plot, names="value")
-
-		self._on_file_change({"name": "value", "new": self.file_dropdown.value})
-		display(widgets.VBox([self.file_dropdown, self.mpc_time_dropdown, self.plot_output]))
+		default_file = str(max(parquet_files, key=lambda path: path.stat().st_mtime).resolve())
+		file_options = [{"label": path.name, "value": str(path.resolve())} for path in parquet_files]
+		return file_options, default_file
 
 	def _load_df(self, selected_file: str) -> pd.DataFrame:
+		if selected_file in self._df_cache:
+			return self._df_cache[selected_file]
+
 		df = pd.read_parquet(selected_file).copy()
 		df["mpc_time"] = pd.to_datetime(df["mpc_time"])
 		df["timestamp"] = pd.to_datetime(df["timestamp"])
+		self._df_cache[selected_file] = df
 		return df
 
-	def _on_file_change(self, change) -> None:
-		if change.get("name") != "value":
-			return
+	def _get_mpc_time_options(self, selected_file: str) -> tuple[list[dict[str, str]], str | None]:
+		df = self._load_df(selected_file)
+		mpc_times = sorted(pd.to_datetime(df["mpc_time"]).unique())
+		options = [
+			{
+				"label": pd.Timestamp(ts).strftime("%Y-%m-%d %H:%M"),
+				"value": pd.Timestamp(ts).isoformat(),
+			}
+			for ts in mpc_times
+		]
+		default_value = options[-1]["value"] if options else None
+		return options, default_value
 
-		df = self._load_df(change["new"])
-		self.state["df"] = df
+	def _build_plot_for_selection(self, selected_file: str, selected_mpc_time_iso: str | None) -> go.Figure:
+		if selected_mpc_time_iso is None:
+			return go.Figure()
 
-		mpc_times = sorted(df["mpc_time"].unique())
-		self.mpc_time_dropdown.options = mpc_times
-		self.mpc_time_dropdown.value = max(mpc_times)
-
-	def _render_plot(self, _=None) -> None:
-		df = self.state["df"]
-		if df is None or self.mpc_time_dropdown.value is None:
-			return
-
-		selected_mpc_time = pd.Timestamp(self.mpc_time_dropdown.value)
+		df = self._load_df(selected_file)
+		selected_mpc_time = pd.Timestamp(selected_mpc_time_iso)
 		mpc_result = df[df["mpc_time"] == selected_mpc_time].copy()
 		mpc_result = mpc_result.sort_values("timestamp").set_index("timestamp")
+		return self._build_figure(mpc_result, selected_mpc_time)
 
-		with self.plot_output:
-			self.plot_output.clear_output(wait=True)
-			fig = self._build_figure(mpc_result, selected_mpc_time)
-			fig.show()
+	def run(self, host: str = "127.0.0.1", port: int = 8051, debug: bool = False) -> None:
+		file_options, default_file = self._get_file_options_and_default()
+		initial_mpc_options, initial_mpc_value = self._get_mpc_time_options(default_file)
+
+		app = Dash(__name__)
+		app.layout = html.Div(
+			[
+				html.H3("MPC Control Results"),
+				html.Label("File:"),
+				dcc.Dropdown(id="file-dropdown", options=file_options, value=default_file, clearable=False),
+				html.Br(),
+				html.Label("MPC Run:"),
+				dcc.Dropdown(
+					id="mpc-time-dropdown",
+					options=initial_mpc_options,
+					value=initial_mpc_value,
+					clearable=False,
+				),
+				html.Br(),
+				dcc.Graph(id="mpc-graph", figure=self._build_plot_for_selection(default_file, initial_mpc_value)),
+			],
+			style={"maxWidth": "1100px", "margin": "20px auto", "padding": "0 16px"},
+		)
+
+		@app.callback(
+			Output("mpc-time-dropdown", "options"),
+			Output("mpc-time-dropdown", "value"),
+			Input("file-dropdown", "value"),
+		)
+		def _update_mpc_time_dropdown(selected_file: str):
+			return self._get_mpc_time_options(selected_file)
+
+		@app.callback(
+			Output("mpc-graph", "figure"),
+			Input("file-dropdown", "value"),
+			Input("mpc-time-dropdown", "value"),
+		)
+		def _update_graph(selected_file: str, selected_mpc_time_iso: str | None):
+			return self._build_plot_for_selection(selected_file, selected_mpc_time_iso)
+
+		print(f"Dash app running on http://{host}:{port}")
+		app.run(host=host, port=port, debug=debug)
+
+	def show(self) -> None:
+		self.run()
 
 	def _build_figure(self, mpc_result: pd.DataFrame, selected_mpc_time: pd.Timestamp):
 		fig = make_subplots(
