@@ -4,14 +4,11 @@ import pulp
 import numpy as np
 import pandas as pd
 
-from control.config import MpcConfig
-
-
 class BessOptimizer:
 
     def optimize(
         self,
-        my_config: MpcConfig,
+        my_config: dict,
         price_sell_eur_kwh: pd.Series,
         price_buy_eur_kwh: pd.Series,
         net_load_kw: pd.Series,
@@ -34,30 +31,30 @@ class BessOptimizer:
         model = pulp.LpProblem("DayAheadOpt", pulp.LpMaximize)
 
         # Entscheidungsvariablen
-        p_ch_kw   = pulp.LpVariable.dicts("p_ch", P, 0, my_config.max_charge_kw)
-        p_dis_kw  = pulp.LpVariable.dicts("p_dis", P, 0, my_config.max_discharge_kw)
+        p_ch_kw   = pulp.LpVariable.dicts("p_ch", P, 0, my_config["battery"]["max_charge_kw"])
+        p_dis_kw  = pulp.LpVariable.dicts("p_dis", P, 0, my_config["battery"]["max_discharge_kw"])
         soc_kwh    = pulp.LpVariable.dicts("soc", T, \
-            my_config.soc_min_percent * my_config.capacity_kwh / 100.0, my_config.capacity_kwh)
+            my_config["battery"]["soc_min_percent"] * my_config["battery"]["capacity_kwh"] / 100.0, my_config["battery"]["capacity_kwh"])
         p_sell_kw = pulp.LpVariable.dicts("p_sell", P, 0)
         p_buy_kw  = pulp.LpVariable.dicts("p_buy", P, 0)
         y = pulp.LpVariable.dicts("y", P, 0, 1, cat="Binary")   # Lade-/Entlade-Exklusivität
 
         # Anfangs- und End-SOC festsetzen
-        soc_init_kwh = soc_init_percent * my_config.capacity_kwh / 100.0
-        soc_final_kwh = my_config.soc_final_percent * my_config.capacity_kwh / 100.0
+        soc_init_kwh = soc_init_percent * my_config["battery"]["capacity_kwh"] / 100.0
+        soc_final_kwh = my_config["battery"]["soc_final_percent"] * my_config["battery"]["capacity_kwh"] / 100.0
         model += soc_kwh[0] == soc_init_kwh
         model += soc_kwh[T[-1]] == soc_final_kwh
 
         # Füge SOC Nebenbedingungen hinzu
         for t in range(1, len(T)):
             model += soc_kwh[t] == soc_kwh[t-1] + \
-                delta_t * (my_config.eta_charge * p_ch_kw[t-1] - p_dis_kw[t-1] \
-                / my_config.eta_discharge)
+                delta_t * (my_config["battery"]["eta_charge"] * p_ch_kw[t-1] - p_dis_kw[t-1] \
+                / my_config["battery"]["eta_discharge"])
 
         # Lade-/Entlade-Exklusivität
         for p in P:
-            model += p_ch_kw[p]  <= my_config.max_charge_kw * y[p]
-            model += p_dis_kw[p] <= my_config.max_discharge_kw * (1 - y[p])
+            model += p_ch_kw[p]  <= my_config["battery"]["max_charge_kw"] * y[p]
+            model += p_dis_kw[p] <= my_config["battery"]["max_discharge_kw"] * (1 - y[p])
 
         # Leistungsbilanz
         for p in P:

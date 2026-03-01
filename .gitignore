@@ -8,3 +8,4 @@ build/
 pyproject.toml
 **.pkl
 **.parquet
+**/output/**
