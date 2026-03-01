@@ -11,6 +11,9 @@ from control.optimize import BessOptimizer
 
 class MpcController:
 
+    def __init__(self):
+        self.output_file_timestamp = None
+
     def run(self):
 
         # Prepare main loop
@@ -18,6 +21,7 @@ class MpcController:
         victron_mqtt_reader = Victron_Mqtt_Reader()
         my_forecaster = ForecastingModel()
         my_optimizer = BessOptimizer()
+        self.output_file_timestamp = pd.Timestamp.now(tz="Europe/Vienna")
 
         while True:
             try:
@@ -27,6 +31,9 @@ class MpcController:
                 if current_time >= next_exec_time:
 
                     my_config = self.load_config()
+
+                    mpc_time = pd.Timestamp.now(tz="Europe/Vienna")
+
                     next_exec_time += my_config["mpc"]["interval_minutes"] * 60
 
                     act_soc_percent = victron_mqtt_reader.get_latest_value("soc_percent")
@@ -46,21 +53,16 @@ class MpcController:
                         price_buy_eur_kwh=price_buy_eur_kwh,
                         net_load_kw=netload_forecast_kw,
                         soc_init_percent=act_soc_percent,
-                        verbose=True,
+                        verbose=False,
                         )
 
-                    set_netload_kw = (
-                        netload_forecast_kw +
-                        optimization_results["p_ch_kw"]
-                        - optimization_results["p_dis_kw"]
-                        )
-
-                    victron_mqtt_reader.set_netload(netload_kw=set_netload_kw.iloc[0])
+                    victron_mqtt_reader.set_netload(netload_kw=optimization_results["netload_kw"].iloc[0])
 
                     self.save_results(price_sell_eur_kwh, price_buy_eur_kwh, netload_forecast_kw,
-                        set_netload_kw, optimization_results)
+                        optimization_results, mpc_time)
 
-                    print("--- MPC Controller iteration completed. Next update in 15 minutes. ---")
+                    print((f"--- MPC Controller iteration completed at timestamp {mpc_time}. "
+                          "Next update in 15 minutes. ---"))
 
                 time.sleep(1)  # prevent CPU overload
 
@@ -77,31 +79,38 @@ class MpcController:
         price_sell_eur_kwh,
         price_buy_eur_kwh,
         netload_forecast_kw,
-        set_netload_kw,
         optimization_results,
+        mpc_time,
         ) -> None:
         """Save MPC results to a Parquet file for later analysis."""
 
         results_df = pd.DataFrame({
-            "mpc_time": price_sell_eur_kwh.index,
+            "mpc_time": mpc_time,
             "netload_forecast_kw": netload_forecast_kw,
-            "set_netload_kw": set_netload_kw,
-            "p_ch_kw": optimization_results["p_ch_kw"],
-            "p_dis_kw": optimization_results["p_dis_kw"],
+            "set_netload_kw": optimization_results["netload_kw"],
             "price_sell_eur_kwh": price_sell_eur_kwh,
             "price_buy_eur_kwh": price_buy_eur_kwh,
+            "p_ch_kw": optimization_results["p_ch_kw"],
+            "p_dis_kw": optimization_results["p_dis_kw"],
+            "soc_percent": optimization_results["soc_percent"],
+            "milp_status": optimization_results["milp_status"],
+            "milp_objective_value": optimization_results["milp_objective_value"],
         })
-        file_path = Path(__file__).parent / "mpc_results.parquet"
+
+        timestamp = self.output_file_timestamp.strftime('%Y%m%d_%H%M%S')
+        file_path = Path(__file__).parent / f"output/mpc_results_{timestamp}.parquet"
         results_df.reset_index(inplace=True)
+        results_df.rename(columns={"index": "timestamp"}, inplace=True)
         if file_path.exists():
             existing_df = pd.read_parquet(file_path)
             results_df = pd.concat([existing_df, results_df], ignore_index=True)
-        results_df.to_parquet(file_path)
+        results_df.to_parquet(file_path, engine="pyarrow")
 
     def load_config(self) -> dict:
         """Load MPC configuration from a TOML file."""
 
-        with open("config.toml", "rb") as f:
+        config_file = Path(__file__).parent / "config.toml"
+        with open(config_file, "rb") as f:
             return tomllib.load(f)
 
 if __name__ == "__main__":

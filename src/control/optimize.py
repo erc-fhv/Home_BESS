@@ -13,7 +13,7 @@ class BessOptimizer:
         price_buy_eur_kwh: pd.Series,
         net_load_kw: pd.Series,
         soc_init_percent: float,
-        verbose: bool = True,
+        verbose: bool = False,
         ) -> dict[str, pd.Series]:
 
         # Konsistenzcheck
@@ -79,11 +79,14 @@ class BessOptimizer:
             print(f"- optimaler Wert: {pulp.value(model.objective)}")
 
         optimization_results = {
-            "soc_kwh":   pd.Series([soc_kwh[t].value() for t in T], index=time_points),
-            "p_ch_kw":   pd.Series([p_ch_kw[p].value() for p in P], index=time_periods),
-            "p_dis_kw":  pd.Series([p_dis_kw[p].value() for p in P], index=time_periods),
-            "p_sell_kw": pd.Series([p_sell_kw[p].value() for p in P], index=time_periods),
-            "p_buy_kw":  pd.Series([p_buy_kw[p].value() for p in P], index=time_periods),
+            "soc_percent": pd.Series([soc_kwh[t].value() for t in T], index=time_points) \
+                 / my_config["battery"]["capacity_kwh"] * 100.0,
+            "p_ch_kw": pd.Series([p_ch_kw[p].value() for p in P], index=time_periods),
+            "p_dis_kw": pd.Series([p_dis_kw[p].value() for p in P], index=time_periods),
+            "netload_kw": pd.Series([p_buy_kw[p].value() - p_sell_kw[p].value() for p in P], \
+                index=time_periods),
+            "milp_status": pd.Series(pulp.LpStatus[model.status], index=time_points),
+            "milp_objective_value": pd.Series(pulp.value(model.objective), index=time_points),
         }
 
         return optimization_results
