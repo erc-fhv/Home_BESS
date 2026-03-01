@@ -339,7 +339,7 @@ class Bess:
                 y=1.02,
                 xref="paper",
                 yref="paper",
-                text=f"Objective: {objective_value:.2f} EUR",
+                text=f"Tagesgewinn: {objective_value:.2f} EUR",
                 showarrow=False,
                 align="right",
                 font=dict(size=12, color="black"),
@@ -359,19 +359,34 @@ class Bess:
         print(f"Dash app running on http://127.0.0.1:{port}")
 
         app = Dash(__name__)
+        default_residual_profile_path = str(Path(__file__).parent / "output" / "energy_data.csv")
 
         app.layout = html.Div(
             [
+                html.H1("Day-Ahead Optimization"),
+
                 html.Div(
                     [
+                        dcc.Input(
+                            id="residual-profile-path",
+                            type="text",
+                            value=default_residual_profile_path,
+                            style={
+                                "flex": "0 0 25%",
+                                "padding": "10px",
+                                "borderRadius": "8px",
+                                "border": "1px solid #ccc",
+                            },
+                        ),
                         dcc.Upload(
                             id="residual-profile-upload",
                             children=html.Button(
-                                "Residuallastprofil hochladen (CSV)",
+                                "Get Load",
                                 style={
                                     "padding": "10px 16px",
                                     "borderRadius": "8px",
                                     "border": "1px solid",
+                                    "backgroundColor": "white",
                                     "cursor": "pointer",
                                     "fontWeight": "600",
                                 },
@@ -385,7 +400,72 @@ class Bess:
                             },
                         ),
                     ],
-                    style={"marginBottom": "10px"},
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "gap": "10px",
+                        "marginBottom": "10px",
+                    },
+                ),
+
+                dcc.RadioItems(
+                    id="control-algorithm",
+                    options=[
+                        {
+                            "label": "PV-Überschussladen",
+                            "value": "pv-ueberschussladen",
+                            "disabled": True,
+                        },
+                        {
+                            "label": "Laden ab 2kW Überschuss",
+                            "value": "time-of-use",
+                            "disabled": True,
+                        },
+                        {
+                            "label": "Model Predictive Control",
+                            "value": "model-predictive-control",
+                            "disabled": False,
+                        },
+                    ],
+                    value="model-predictive-control",
+                    labelStyle={"display": "block", "marginBottom": "6px"},
+                    style={
+                        "width": "25%",
+                        "marginBottom": "12px",
+                        "border": "1px solid #d3d3d3",
+                        "borderRadius": "8px",
+                        "padding": "10px",
+                    },
+                ),
+
+                dcc.RadioItems(
+                    id="price-source",
+                    options=[
+                        {
+                            "label": "epex",
+                            "value": "epex",
+                            "disabled": False,
+                        },
+                        {
+                            "label": "time-of-use",
+                            "value": "time-of-use",
+                            "disabled": True,
+                        },
+                        {
+                            "label": "fix",
+                            "value": "fix",
+                            "disabled": True,
+                        },
+                    ],
+                    value="epex",
+                    labelStyle={"display": "block", "marginBottom": "6px"},
+                    style={
+                        "width": "25%",
+                        "marginBottom": "12px",
+                        "border": "1px solid #d3d3d3",
+                        "borderRadius": "8px",
+                        "padding": "10px",
+                    },
                 ),
 
                 html.Div(

@@ -110,7 +110,7 @@ class MpcEvaluationDashboard:
 			vertical_spacing=0.03,
 			subplot_titles=(
 				"Netload Forecast [kW]",
-				"Set Netload [kW]",
+				"Grid Power [kW]",
 				"Buy Price [€/kWh]",
 				"SOC [%]",
 			),
