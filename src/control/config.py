@@ -5,11 +5,12 @@ import numpy as np
 class MpcConfig:
     """Configuration config for the MPC controller."""
 
-    update_interval_sec: int = 15 * 60
+    mpc_interval_sec: int = 15 * 60
     max_charge_kw: float = 4.0*3
     max_discharge_kw: float = 4.0*3
-    capacity_kwh: float = 30.0
-    eta: float = np.sqrt(0.95) * 0.96    # 95% BESS round-trip efficiency times 96% power factor
+    capacity_kwh: float = 5.12*6
+    eta: float = np.sqrt(0.95) * 0.96   # 95% battery round-trip efficiency
+                                        # multiplied by 96% converter power factor
     eta_charge: float = eta
     eta_discharge: float = eta
     soc_min_percent: float = 10.0

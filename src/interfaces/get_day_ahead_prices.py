@@ -13,6 +13,7 @@ class DayAheadPrice:
         end_date: pd.Timestamp | None = None,
         store_to_file: Path | None = None,
         ) -> pd.Series:
+        """Return day-ahead Epex electricity prices in EUR/kWh."""
 
         # Set default date range to today if not provided
         if start_date is None:

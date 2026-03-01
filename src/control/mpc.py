@@ -26,7 +26,7 @@ class MpcController:
                 # --- Run every 15 minutes ---
                 if current_time >= next_exec_time:
 
-                    next_exec_time += my_config.update_interval_sec
+                    next_exec_time += my_config.mpc_interval_sec
 
                     act_soc_percent = victron_mqtt_reader.get_latest_value("soc_percent")
 
@@ -58,6 +58,7 @@ class MpcController:
 
                     # Save results for analysis
                     results_df = pd.DataFrame({
+                        "mpc_time": price_sell_eur_kwh.index,
                         "netload_forecast_kw": netload_forecast_kw,
                         "set_netload_kw": set_netload_kw,
                         "p_ch_kw": optimization_results["p_ch_kw"],
@@ -65,7 +66,12 @@ class MpcController:
                         "price_sell_eur_kwh": price_sell_eur_kwh,
                         "price_buy_eur_kwh": price_buy_eur_kwh,
                     })
-                    results_df.to_parquet(Path(__file__).parent / "mpc_results.parquet")
+                    file_path = Path(__file__).parent / "mpc_results.parquet"
+                    results_df.reset_index(inplace=True)
+                    if file_path.exists():
+                        existing_df = pd.read_parquet(file_path)
+                        results_df = pd.concat([existing_df, results_df], ignore_index=True)
+                    results_df.to_parquet(file_path)
 
                     print("--- MPC Controller iteration completed. Next update in 15 minutes. ---")
 
