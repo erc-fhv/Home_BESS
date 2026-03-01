@@ -56,7 +56,8 @@ class MpcController:
                         verbose=False,
                         )
 
-                    victron_mqtt_reader.set_netload(netload_kw=optimization_results["netload_kw"].iloc[0])
+                    # netload_kw = optimization_results["netload_kw"].iloc[0]
+                    # victron_mqtt_reader.set_netload(netload_kw=netload_kw)
 
                     self.save_results(price_sell_eur_kwh, price_buy_eur_kwh, netload_forecast_kw,
                         optimization_results, mpc_time)
@@ -97,10 +98,9 @@ class MpcController:
             "milp_objective_value": optimization_results["milp_objective_value"],
         })
 
+        results_df = results_df.reset_index(names="timestamp")
         timestamp = self.output_file_timestamp.strftime('%Y%m%d_%H%M%S')
         file_path = Path(__file__).parent / f"output/mpc_results_{timestamp}.parquet"
-        results_df.reset_index(inplace=True)
-        results_df.rename(columns={"index": "timestamp"}, inplace=True)
         if file_path.exists():
             existing_df = pd.read_parquet(file_path)
             results_df = pd.concat([existing_df, results_df], ignore_index=True)

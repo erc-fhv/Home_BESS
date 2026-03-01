@@ -21,7 +21,7 @@ class MpcEvaluationDashboard:
 		self.mpc_time_dropdown = widgets.Dropdown(
 			options=[],
 			description="mpc_time:",
-			layout=widgets.Layout(width="520px"),
+			layout=widgets.Layout(width="400px"),
 		)
 		self.plot_output = widgets.Output()
 
@@ -142,10 +142,7 @@ class MpcEvaluationDashboard:
 		fig.update_xaxes(title_text="Uhrzeit", tickformat="%H:%M", row=4, col=1)
 
 		fig.update_layout(
-			title=(
-				"MPC Control Results – mpc_time: "
-				f"{pd.Timestamp(selected_mpc_time).strftime('%Y-%m-%d %H:%M:%S %Z')}"
-			),
+			title="MPC Control Results",
 			height=780,
 			template="plotly_white",
 			hovermode="x unified",
