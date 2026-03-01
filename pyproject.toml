@@ -26,6 +26,8 @@ dependencies = [
     "retry-requests",
     "loadforecasting-models",
     "ipywidgets"
+    "pyarrow",
+    "nbformat"
 ]
 
 [build-system]
