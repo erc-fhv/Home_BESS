@@ -1,4 +1,6 @@
 from pathlib import Path
+import base64
+from io import StringIO
 import pulp
 import numpy as np
 import pandas as pd
@@ -49,7 +51,7 @@ class Bess:
         self.prices_epex = self.prices_epex.resample('15min').ffill()
 
         # Energieverbrauchs- und Produktionsdaten einlesen
-        # todo: automatisch einlesen, falls nicht vorhanden.
+        # todo: ebenfalls automatisch einlesen, falls nicht vorhanden.
         file_path = Path(__file__).parent / "output" / "energy_data.csv"
         self.df_energy = pd.read_csv(file_path, index_col=0)
         self.df_energy.index = pd.to_datetime(self.df_energy.index, utc=True)
@@ -360,7 +362,31 @@ class Bess:
 
         app.layout = html.Div(
             [
-                html.H3("Batterie-Optimierung – Tagesauswahl"),
+                html.Div(
+                    [
+                        dcc.Upload(
+                            id="residual-profile-upload",
+                            children=html.Button(
+                                "Residuallastprofil hochladen (CSV)",
+                                style={
+                                    "padding": "10px 16px",
+                                    "borderRadius": "8px",
+                                    "border": "1px solid",
+                                    "cursor": "pointer",
+                                    "fontWeight": "600",
+                                },
+                            ),
+                            multiple=False,
+                            style={
+                                "display": "inline-block",
+                                "padding": "6px",
+                                # "border": "1px dashed",
+                                "borderRadius": "10px",
+                            },
+                        ),
+                    ],
+                    style={"marginBottom": "10px"},
+                ),
 
                 html.Div(
                     [
@@ -419,8 +445,17 @@ class Bess:
         @app.callback(
             Output("result-graph", "figure"),
             Input("act-day-picker", "date"),
+            Input("residual-profile-upload", "contents"),
         )
-        def update_graph(act_day):
+        def update_graph(act_day, residual_profile_upload_contents):
+            if residual_profile_upload_contents:
+                _, content_string = residual_profile_upload_contents.split(",", maxsplit=1)
+                decoded = base64.b64decode(content_string).decode("utf-8")
+                self.df_energy = pd.read_csv(StringIO(decoded), index_col=0)
+                energy_index = pd.DatetimeIndex(pd.to_datetime(self.df_energy.index, utc=True))
+                self.df_energy.index = energy_index.tz_convert("Europe/Vienna")
+                self.df_energy = self.df_energy / 1000.0
+
             act_day = pd.Timestamp(act_day, tz="Europe/Vienna")
             self.run(act_day=act_day, use_dynamic_prices=use_dynamic_prices, verbose=False)
             return self.build_figure()
