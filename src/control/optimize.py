@@ -83,7 +83,7 @@ class BessOptimizer:
                  / my_config["battery"]["capacity_kwh"] * 100.0,
             "p_ch_kw": pd.Series([p_ch_kw[p].value() for p in P], index=time_periods),
             "p_dis_kw": pd.Series([p_dis_kw[p].value() for p in P], index=time_periods),
-            "netload_kw": pd.Series([p_buy_kw[p].value() - p_sell_kw[p].value() for p in P], \
+            "set_netload_kw": pd.Series([p_buy_kw[p].value() - p_sell_kw[p].value() for p in P], \
                 index=time_periods),
             "milp_status": pd.Series(pulp.LpStatus[model.status], index=time_points),
             "milp_objective_value": pd.Series(pulp.value(model.objective), index=time_points),

@@ -56,14 +56,14 @@ class MpcController:
                         verbose=False,
                         )
 
-                    # netload_kw = optimization_results["netload_kw"].iloc[0]
-                    # victron_mqtt_reader.set_netload(netload_kw=netload_kw)
+                    netload_kw = optimization_results["set_netload_kw"].iloc[0]
+                    victron_mqtt_reader.set_netload(netload_kw=netload_kw)
 
                     self.save_results(price_sell_eur_kwh, price_buy_eur_kwh, netload_forecast_kw,
-                        optimization_results, mpc_time)
+                        optimization_results, mpc_time, weather_data)
 
                     print((f"--- MPC Controller iteration completed at timestamp {mpc_time}. "
-                          "Next update in 15 minutes. ---"))
+                          "Next update in 15 minutes. ---"), flush=True)
 
                 time.sleep(1)  # prevent CPU overload
 
@@ -82,21 +82,18 @@ class MpcController:
         netload_forecast_kw,
         optimization_results,
         mpc_time,
+        weather_data,
         ) -> None:
         """Save MPC results to a Parquet file for later analysis."""
 
         results_df = pd.DataFrame({
             "mpc_time": mpc_time,
             "netload_forecast_kw": netload_forecast_kw,
-            "set_netload_kw": optimization_results["netload_kw"],
             "price_sell_eur_kwh": price_sell_eur_kwh,
             "price_buy_eur_kwh": price_buy_eur_kwh,
-            "p_ch_kw": optimization_results["p_ch_kw"],
-            "p_dis_kw": optimization_results["p_dis_kw"],
-            "soc_percent": optimization_results["soc_percent"],
-            "milp_status": optimization_results["milp_status"],
-            "milp_objective_value": optimization_results["milp_objective_value"],
         })
+        results_df = pd.concat([results_df, pd.DataFrame(optimization_results)], axis=1)
+        results_df = pd.concat([results_df, pd.DataFrame(weather_data)], axis=1)
 
         results_df = results_df.reset_index(names="timestamp")
         timestamp = self.output_file_timestamp.strftime('%Y%m%d_%H%M%S')

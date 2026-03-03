@@ -1,9 +1,8 @@
 
-from asyncio import timeout
 from pathlib import Path
 import json
-from socket import timeout
 import time
+import threading
 import paho.mqtt.client as mqtt
 import ssl
 
@@ -20,11 +19,18 @@ class Victron_Mqtt_Reader:
         self.broker = "mqtt.victronenergy.com"
         self.port = 8883
         self.latest_packets = {}
+        self.watchdog_interval_sec = 20
+        self._watchdog_stop = threading.Event()
+        self._watchdog_thread = None
 
         self.topics = {
             "soc_percent": f"N/{self.portal_id}/battery/512/Soc",
             "keepalive": f"R/{self.portal_id}/keepalive",
+            "watchdog": f"R/{self.portal_id}/battery/512/CustomName",
             "netload": f"W/{self.portal_id}/settings/0/Settings/CGwacs/AcPowerSetPoint",
+
+            # Using CustomName topic for watchdog, as it unused in this setup.
+            "watchdog": f"W/{self.portal_id}/battery/512/CustomName",
         }
 
         self.connect()
@@ -52,9 +58,32 @@ class Victron_Mqtt_Reader:
 
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
-            pass
+            self.start_watchdog()
         else:
             raise ConnectionError(f"Failed to connect to MQTT broker. Code: {rc}")
+
+    def start_watchdog(self):
+        """Start publishing a watchdog packet every 20 seconds."""
+        if self._watchdog_thread and self._watchdog_thread.is_alive():
+            return
+
+        self._watchdog_stop.clear()
+
+        def _watchdog_loop():
+            self.send_watchdog()
+            while not self._watchdog_stop.wait(self.watchdog_interval_sec):
+                self.send_watchdog()
+
+        self._watchdog_thread = threading.Thread(
+            target=_watchdog_loop,
+            name="victron-watchdog",
+            daemon=True,
+        )
+        self._watchdog_thread.start()
+
+    def send_watchdog(self):
+        payload = json.dumps({"value": str(int(time.time()))})
+        self.client.publish(self.topics["watchdog"], payload, retain=True)
 
     def on_message(self, client, userdata, msg):
         payload_text = msg.payload.decode()
@@ -113,7 +142,11 @@ class Victron_Mqtt_Reader:
         netload_w = netload_kw * 1000.0  # Convert from kW to W
 
         payload = json.dumps({"value": netload_w})
-        self.client.publish(self.topics["netload"], payload)
+        self.client.publish(
+            self.topics["netload"],
+            payload,
+            retain=False, # False, in order to detect connection losses on the edge device.
+            )
 
 if __name__ == "__main__":
     mqtt_reader = Victron_Mqtt_Reader()
