@@ -19,18 +19,15 @@ class Victron_Mqtt_Reader:
         self.broker = "mqtt.victronenergy.com"
         self.port = 8883
         self.latest_packets = {}
-        self.watchdog_interval_sec = 20
-        self._watchdog_stop = threading.Event()
-        self._watchdog_thread = None
+        self.heartbeat_interval_sec = 20
+        self._heartbeat_stop = threading.Event()
+        self._heartbeat_thread = None
 
         self.topics = {
             "soc_percent": f"N/{self.portal_id}/battery/512/Soc",
             "keepalive": f"R/{self.portal_id}/keepalive",
-            "watchdog": f"R/{self.portal_id}/battery/512/CustomName",
             "netload": f"W/{self.portal_id}/settings/0/Settings/CGwacs/AcPowerSetPoint",
-
-            # Using CustomName topic for watchdog, as it unused in this setup.
-            "watchdog": f"W/{self.portal_id}/battery/512/CustomName",
+            "heartbeat": f"W/{self.portal_id}/molu/0/MpcHeartbeat",
         }
 
         self.connect()
@@ -58,32 +55,42 @@ class Victron_Mqtt_Reader:
 
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
-            self.start_watchdog()
+            self.start_heartbeat()
         else:
             raise ConnectionError(f"Failed to connect to MQTT broker. Code: {rc}")
 
-    def start_watchdog(self):
-        """Start publishing a watchdog packet every 20 seconds."""
-        if self._watchdog_thread and self._watchdog_thread.is_alive():
+    def start_heartbeat(self):
+        """
+        Start publishing a heartbeat to the MPC heartbeat service every 20 seconds.
+        (If not already running.)
+        """
+
+        if self._heartbeat_thread and self._heartbeat_thread.is_alive():
             return
 
-        self._watchdog_stop.clear()
+        self._heartbeat_stop.clear()
 
-        def _watchdog_loop():
-            self.send_watchdog()
-            while not self._watchdog_stop.wait(self.watchdog_interval_sec):
-                self.send_watchdog()
+        def _heartbeat_loop():
+            self.send_heartbeat()
+            while not self._heartbeat_stop.wait(self.heartbeat_interval_sec):
+                self.send_heartbeat()
 
-        self._watchdog_thread = threading.Thread(
-            target=_watchdog_loop,
-            name="victron-watchdog",
+        self._heartbeat_thread = threading.Thread(
+            target=_heartbeat_loop,
+            name="mpc-heartbeat",
             daemon=True,
         )
-        self._watchdog_thread.start()
+        self._heartbeat_thread.start()
 
-    def send_watchdog(self):
-        payload = json.dumps({"value": str(int(time.time()))})
-        self.client.publish(self.topics["watchdog"], payload, retain=True)
+    def send_heartbeat(self):
+        payload = json.dumps({"value": time.monotonic()})
+        self.client.publish(self.topics["heartbeat"], payload, retain=False)
+
+    def stop_heartbeat(self):
+        """Stop the heartbeat thread."""
+        self._heartbeat_stop.set()
+        if self._heartbeat_thread:
+            self._heartbeat_thread.join()
 
     def on_message(self, client, userdata, msg):
         payload_text = msg.payload.decode()
@@ -116,7 +123,7 @@ class Victron_Mqtt_Reader:
                 return self.latest_packets[topic]
             else:
                 self.send_keepalive(self.client)
-                time.sleep(0.1)  # Avoid busy waiting
+                time.sleep(1)  # Avoid busy waiting
 
         assert False, f"Timeout: No value received for topic {topic} within {timeout_sec} seconds."
 

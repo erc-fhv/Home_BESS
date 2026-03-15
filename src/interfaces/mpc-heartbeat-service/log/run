@@ -1,0 +1,2 @@
+#!/bin/sh
+exec cat >> /data/mpc-heartbeat-service/log/main/current

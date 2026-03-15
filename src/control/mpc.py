@@ -65,14 +65,13 @@ class MpcController:
                     print((f"--- MPC Controller iteration completed at timestamp {mpc_time}. "
                           "Next update in 15 minutes. ---"), flush=True)
 
-                time.sleep(1)  # prevent CPU overload
+                    victron_mqtt_reader.start_heartbeat()
 
-            except KeyboardInterrupt:
-                print("MPC Controller stopped.")
-                break
+                time.sleep(1)  # prevent CPU overload
 
             except Exception as e:
                 print(f"Error in MPC Controller. Wait and retry. Error: {e}")
+                victron_mqtt_reader.stop_heartbeat()
                 time.sleep(20)
 
     def save_results(

@@ -36,3 +36,7 @@ View the logs of the service:
 ```
 sudo journalctl -u mpc.service -f
 ```
+View the current status of the service:
+```
+sudo systemctl status mpc.service
+```
