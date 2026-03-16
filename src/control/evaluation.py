@@ -112,12 +112,6 @@ class MpcEvaluationDashboard:
 			cols=1,
 			shared_xaxes=True,
 			vertical_spacing=0.03,
-			subplot_titles=(
-				"Netload Forecast [kW]",
-				"Grid Power [kW]",
-				"Buy Price [€/kWh]",
-				"SOC [%]",
-			),
 		)
 
 		fig.add_trace(
@@ -153,12 +147,10 @@ class MpcEvaluationDashboard:
 			col=1,
 		)
 
-		soc_column = "soc_kwh" if "soc_kwh" in mpc_result.columns else "soc_percent"
-		soc_title = "SOC [kWh]" if soc_column == "soc_kwh" else "SOC [%]"
 		fig.add_trace(
 			go.Scatter(
 				x=mpc_result.index,
-				y=mpc_result[soc_column],
+				y=mpc_result["soc_percent"],
 				mode="lines",
 				line=dict(color="#9467bd", width=2, shape="hv"),
 			),
@@ -166,16 +158,17 @@ class MpcEvaluationDashboard:
 			col=1,
 		)
 
-		fig.update_yaxes(title_text="[kW]", row=1, col=1)
-		fig.update_yaxes(title_text="Setpoint [kW]", row=2, col=1)
-		fig.update_yaxes(title_text="Price [€/kWh]", row=3, col=1)
-		fig.update_yaxes(title_text=soc_title, row=4, col=1)
+		fig.update_yaxes(title_text="Netload<br>Forecast [kW]", title_standoff=14, automargin=True, row=1, col=1)
+		fig.update_yaxes(title_text="Grid<br>Power [kW]", title_standoff=14, automargin=True, row=2, col=1)
+		fig.update_yaxes(title_text="Energy<br>Price [€/kWh]", title_standoff=14, automargin=True, row=3, col=1)
+		fig.update_yaxes(title_text="Battery<br>SOC [%]", title_standoff=14, automargin=True, row=4, col=1)
 		fig.update_xaxes(title_text="Uhrzeit", tickformat="%H:%M", row=4, col=1)
 
 		fig.update_layout(
 			height=780,
 			template="plotly_white",
 			hovermode="x unified",
+			margin=dict(l=120, r=30, t=60, b=50),
 			showlegend=False,
 		)
 		return fig
