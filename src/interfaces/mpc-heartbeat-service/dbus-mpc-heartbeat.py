@@ -7,10 +7,9 @@ import dbus
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 
-logging.Formatter.converter = time.gmtime
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)sZ %(name)s %(levelname)s %(message)s',
+    format='%(asctime)s %(name)s %(levelname)s %(message)s',
     datefmt='%Y-%m-%dT%H:%M:%S'
 )
 log = logging.getLogger("DbusMoluHeartbeatService")

@@ -4,7 +4,7 @@ This service reads a heartbeat value on D-Bus and resets `AcPowerSetPoint` to a 
 
 ## First start on Victron GX
 
-Assumption: the service files are available in `/data/mpc-heartbeat-service`.
+Assumption: The service files are copied to the folder `/data/mpc-heartbeat-service`.
 
 1. Make scripts executable:
 
@@ -19,6 +19,7 @@ chmod +x /data/mpc-heartbeat-service/log/run
 ln -sf /data/mpc-heartbeat-service /service/mpc-heartbeat-service
 ls -la /service/mpc-heartbeat-service
 ```
+ln -s /data/dbus-solaredge/service/ /opt/victronenergy/service/dbus-solaredge
 
 The `/service` directory is on a tmpfs and is wiped on every reboot. Add the symlink creation to `/data/rc.local` so it is restored automatically:
 

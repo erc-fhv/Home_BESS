@@ -5,9 +5,14 @@ import plotly.graph_objects as go
 from dash import Dash, Input, Output, dcc, html
 from plotly.subplots import make_subplots
 
-
 class MpcEvaluationDashboard:
-	def __init__(self, output_dir: str | Path = "output", file_pattern: str = "mpc_results_*.parquet") -> None:
+	def __init__(self, output_dir: str | Path = "", file_pattern: str = "mpc_results_*.parquet") -> None:
+
+		if output_dir == "":
+			output_dir = Path(__file__).parent / "output"
+			if not output_dir.exists():
+				raise FileNotFoundError(f"Output directory '{output_dir}' does not exist.")
+
 		self.output_dir = Path(output_dir)
 		self.file_pattern = file_pattern
 		self._df_cache: dict[str, pd.DataFrame] = {}
@@ -56,7 +61,7 @@ class MpcEvaluationDashboard:
 		mpc_result = mpc_result.sort_values("timestamp").set_index("timestamp")
 		return self._build_figure(mpc_result, selected_mpc_time)
 
-	def run(self, host: str = "127.0.0.1", port: int = 8051, debug: bool = False) -> None:
+	def run(self, host: str = "127.0.0.1", debug: bool = False) -> None:
 		file_options, default_file = self._get_file_options_and_default()
 		initial_mpc_options, initial_mpc_value = self._get_mpc_time_options(default_file)
 
@@ -96,8 +101,7 @@ class MpcEvaluationDashboard:
 		def _update_graph(selected_file: str, selected_mpc_time_iso: str | None):
 			return self._build_plot_for_selection(selected_file, selected_mpc_time_iso)
 
-		print(f"Dash app running on http://{host}:{port}")
-		app.run(host=host, port=port, debug=debug)
+		app.run(host=host, debug=debug)
 
 	def show(self) -> None:
 		self.run()
@@ -162,17 +166,20 @@ class MpcEvaluationDashboard:
 			col=1,
 		)
 
-		fig.update_yaxes(title_text="Forecast [kW]", row=1, col=1)
+		fig.update_yaxes(title_text="[kW]", row=1, col=1)
 		fig.update_yaxes(title_text="Setpoint [kW]", row=2, col=1)
 		fig.update_yaxes(title_text="Price [€/kWh]", row=3, col=1)
 		fig.update_yaxes(title_text=soc_title, row=4, col=1)
 		fig.update_xaxes(title_text="Uhrzeit", tickformat="%H:%M", row=4, col=1)
 
 		fig.update_layout(
-			title="MPC Control Results",
 			height=780,
 			template="plotly_white",
 			hovermode="x unified",
 			showlegend=False,
 		)
 		return fig
+
+if __name__ == "__main__":
+	dashboard = MpcEvaluationDashboard()
+	dashboard.show()

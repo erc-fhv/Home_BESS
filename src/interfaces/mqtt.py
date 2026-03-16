@@ -26,7 +26,8 @@ class Victron_Mqtt_Reader:
         self.topics = {
             "soc_percent": f"N/{self.portal_id}/battery/512/Soc",
             "keepalive": f"R/{self.portal_id}/keepalive",
-            "netload": f"W/{self.portal_id}/settings/0/Settings/CGwacs/AcPowerSetPoint",
+            "netload_write": f"W/{self.portal_id}/settings/0/Settings/CGwacs/AcPowerSetPoint",
+            "netload_read": f"N/{self.portal_id}/settings/0/Settings/CGwacs/AcPowerSetPoint",
             "heartbeat": f"W/{self.portal_id}/molu/0/MpcHeartbeat",
         }
 
@@ -112,6 +113,7 @@ class Victron_Mqtt_Reader:
             raise ValueError((f"Invalid value type: {value_type}. Valid types are: "
                              f"{list(self.topics.keys())}"))
 
+        ret_value = None
         topic = self.topics[value_type]
         self.client.subscribe(topic)
         self.send_keepalive(self.client)
@@ -120,12 +122,15 @@ class Victron_Mqtt_Reader:
         start_time = time.monotonic()
         while time.monotonic() - start_time < timeout_sec:
             if topic in self.latest_packets:
-                return self.latest_packets[topic]
+                ret_value = self.latest_packets[topic]
+                break
             else:
-                self.send_keepalive(self.client)
-                time.sleep(1)  # Avoid busy waiting
+                time.sleep(0.1)  # Avoid busy waiting
 
-        assert False, f"Timeout: No value received for topic {topic} within {timeout_sec} seconds."
+        assert ret_value is not None, \
+            f"Timeout: No value received for topic {topic} within {timeout_sec} seconds."
+
+        return ret_value
 
     def send_keepalive(self, client):
         """Victron MQTT requires a keepalive message to trigger the data flow."""
@@ -144,13 +149,13 @@ class Victron_Mqtt_Reader:
             netload_kw = 0.05
 
         if verbose:
-            print(f"Setting net load to {netload_kw:.2f} kW (forecast: {netload_kw:.2f} kW)")
+            print(f"Setting net load to {netload_kw:.2f} kW.")
 
         netload_w = netload_kw * 1000.0  # Convert from kW to W
 
         payload = json.dumps({"value": netload_w})
         self.client.publish(
-            self.topics["netload"],
+            self.topics["netload_write"],
             payload,
             retain=False, # False, in order to detect connection losses on the edge device.
             )

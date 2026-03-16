@@ -2,6 +2,7 @@ from pathlib import Path
 import time
 import tomllib
 import pandas as pd
+import numpy as np
 
 from interfaces.mqtt import Victron_Mqtt_Reader
 from interfaces.get_day_ahead_prices import DayAheadPrice
@@ -17,24 +18,24 @@ class MpcController:
     def run(self):
 
         # Prepare main loop
-        next_exec_time = time.monotonic()
+        next_exec_time_15min = time.monotonic()
+        next_exec_time_20s = time.monotonic()
         victron_mqtt_reader = Victron_Mqtt_Reader()
         my_forecaster = ForecastingModel()
         my_optimizer = BessOptimizer()
         self.output_file_timestamp = pd.Timestamp.now(tz="Europe/Vienna")
+        set_netload_kw = None
 
         while True:
             try:
                 current_time = time.monotonic()
 
                 # --- Run every 15 minutes ---
-                if current_time >= next_exec_time:
+                if current_time >= next_exec_time_15min:
 
                     my_config = self.load_config()
 
                     mpc_time = pd.Timestamp.now(tz="Europe/Vienna")
-
-                    next_exec_time += my_config["mpc"]["interval_minutes"] * 60
 
                     act_soc_percent = victron_mqtt_reader.get_latest_value("soc_percent")
 
@@ -56,18 +57,30 @@ class MpcController:
                         verbose=False,
                         )
 
-                    netload_kw = optimization_results["set_netload_kw"].iloc[0]
-                    victron_mqtt_reader.set_netload(netload_kw=netload_kw)
+                    set_netload_kw = optimization_results["set_netload_kw"].iloc[0]
+                    victron_mqtt_reader.set_netload(netload_kw=set_netload_kw)
 
                     self.save_results(price_sell_eur_kwh, price_buy_eur_kwh, netload_forecast_kw,
                         optimization_results, mpc_time, weather_data)
 
-                    print((f"--- MPC Controller iteration completed at timestamp {mpc_time}. "
-                          "Next update in 15 minutes. ---"), flush=True)
-
                     victron_mqtt_reader.start_heartbeat()
 
-                time.sleep(1)  # prevent CPU overload
+                    next_exec_time_15min += my_config["mpc"]["interval_minutes"] * 60
+
+                    next_exec_time_20s = time.monotonic() + 20  # add settling time for net load
+
+                # --- Run every 20 seconds ---
+                elif current_time >= next_exec_time_20s:
+
+                    act_netload_w = victron_mqtt_reader.get_latest_value("netload_read")
+                    act_netload_kw = act_netload_w / 1000.0
+                    if not np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2):
+                        print(f"Warning: Set net load {set_netload_kw:.2f} kW does not match " + \
+                            f"actual net load {act_netload_kw:.2f} kW.")
+                    next_exec_time_20s += 20
+
+                else:
+                    time.sleep(1)  # prevent CPU overload
 
             except Exception as e:
                 print(f"Error in MPC Controller. Wait and retry. Error: {e}")
