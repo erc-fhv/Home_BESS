@@ -34,7 +34,8 @@ class BessOptimizer:
         p_ch_kw   = pulp.LpVariable.dicts("p_ch", P, 0, my_config["battery"]["max_charge_kw"])
         p_dis_kw  = pulp.LpVariable.dicts("p_dis", P, 0, my_config["battery"]["max_discharge_kw"])
         soc_kwh    = pulp.LpVariable.dicts("soc", T, \
-            my_config["battery"]["soc_min_percent"] * my_config["battery"]["capacity_kwh"] / 100.0, my_config["battery"]["capacity_kwh"])
+            my_config["battery"]["soc_min_percent"] * my_config["battery"]["capacity_kwh"] / 100.0,
+            my_config["battery"]["capacity_kwh"])
         p_sell_kw = pulp.LpVariable.dicts("p_sell", P, 0)
         p_buy_kw  = pulp.LpVariable.dicts("p_buy", P, 0)
         y = pulp.LpVariable.dicts("y", P, 0, 1, cat="Binary")   # Lade-/Entlade-Exklusivität
