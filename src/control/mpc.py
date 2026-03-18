@@ -71,13 +71,15 @@ class MpcController:
 
                 # --- Run every 20 seconds ---
                 elif current_time >= next_exec_time_20s:
-
-                    act_netload_w = victron_mqtt_reader.get_latest_value("netload_read")
-                    act_netload_kw = act_netload_w / 1000.0
-                    if not np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2):
-                        print(f"Warning: Set net load {set_netload_kw:.2f} kW does not match " + \
-                            f"actual net load {act_netload_kw:.2f} kW.")
-                    next_exec_time_20s += 20
+                    try:
+                        act_netload_w = victron_mqtt_reader.get_latest_value("netload_read")
+                        act_netload_kw = act_netload_w / 1000.0
+                        if not np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2):
+                            print(f"Warning: Set net load {set_netload_kw:.2f} kW does not match " + \
+                                f"actual net load {act_netload_kw:.2f} kW.")
+                        next_exec_time_20s += 20
+                    except Exception as e:
+                        print(f"Error reading actual net load. Wait and retry. Error: {e}")
 
                 else:
                     time.sleep(1)  # prevent CPU overload
