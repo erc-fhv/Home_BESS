@@ -36,7 +36,7 @@ class Bess:
         self.price_buy = pd.Series()
 
         # Epex Preise einlesen
-        file_path = Path(__file__).parent/ "output" / "epex_prices.csv"
+        file_path = Path(__file__).parent / "data" / "epex_prices_2025.csv"
         if not file_path.exists():
             DayAheadPrice.get_epex_prices(
                 country_code="AT",
@@ -52,7 +52,7 @@ class Bess:
 
         # Energieverbrauchs- und Produktionsdaten einlesen
         # todo: ebenfalls automatisch einlesen, falls nicht vorhanden.
-        file_path = Path(__file__).parent / "output" / "energy_data.csv"
+        file_path = Path(__file__).parent / "data" / "example_household_2025.csv"
         self.df_energy = pd.read_csv(file_path, index_col=0)
         self.df_energy.index = pd.to_datetime(self.df_energy.index, utc=True)
         self.df_energy.index = self.df_energy.index.tz_convert("Europe/Vienna")
@@ -353,7 +353,7 @@ class Bess:
     def run_dashboard(
         self,
         use_dynamic_prices: bool = True,
-        port: int = 8050,
+        port: int = 8051,
         ) -> None:
 
         print(f"Dash app running on http://127.0.0.1:{port}")
@@ -541,3 +541,7 @@ class Bess:
             return self.build_figure()
 
         app.run(debug=True, port=port)
+
+if __name__ == "__main__":
+    bess = Bess()
+    bess.run_dashboard()
