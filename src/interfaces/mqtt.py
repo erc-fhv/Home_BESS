@@ -19,7 +19,7 @@ class Victron_Mqtt_Reader:
         self.broker = "mqtt.victronenergy.com"
         self.port = 8883
         self.latest_packets = {}
-        self.heartbeat_interval_sec = 20
+        self.heartbeat_interval_sec = 120
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread = None
 

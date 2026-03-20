@@ -19,7 +19,8 @@ class MpcController:
 
         # Prepare main loop
         next_exec_time_15min = time.monotonic()
-        next_exec_time_20s = time.monotonic()
+        fast_period = 120  # seconds
+        next_fast_cycle = next_exec_time_15min + fast_period
         victron_mqtt_reader = Victron_Mqtt_Reader()
         my_forecaster = ForecastingModel()
         my_optimizer = BessOptimizer()
@@ -67,17 +68,17 @@ class MpcController:
 
                     next_exec_time_15min += my_config["mpc"]["interval_minutes"] * 60
 
-                    next_exec_time_20s = time.monotonic() + 20  # add settling time for net load
+                    next_fast_cycle = time.monotonic() + fast_period  # add settling time
 
-                # --- Run every 20 seconds ---
-                elif current_time >= next_exec_time_20s:
+                # --- Run every fast_period seconds ---
+                elif current_time >= next_fast_cycle:
                     try:
                         act_netload_w = victron_mqtt_reader.get_latest_value("netload_read")
                         act_netload_kw = act_netload_w / 1000.0
                         if not np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2):
                             print(f"Warning: Set net load {set_netload_kw:.2f} kW does not match " + \
                                 f"actual net load {act_netload_kw:.2f} kW.")
-                        next_exec_time_20s += 20
+                        next_fast_cycle += fast_period
                     except Exception as e:
                         print(f"Error reading actual net load. Wait and retry. Error: {e}")
 

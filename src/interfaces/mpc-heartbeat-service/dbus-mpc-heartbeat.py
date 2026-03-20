@@ -20,7 +20,8 @@ if '/opt/victronenergy/dbus-systemcalc-py/ext/velib_python' not in sys.path:
 
 from vedbus import VeDbusService
 
-TIMEOUT_SEC=120      # Sekunden bis Fallback bei fehlendem Heartbeat
+TIMEOUT_MIN=15      # Minuten bis Fallback bei fehlendem Heartbeat
+TIMEOUT_SEC=TIMEOUT_MIN*60
 FALLBACK_WATT=50
 CHECK_INTERVAL_SEC=5
 
@@ -30,6 +31,7 @@ class MpcHeartbeatService:
         log.info("Starting MPC Heartbeat Service")
 
         self.last_heartbeat = time.time()
+        self.timeout_triggered = False
 
         self.service = VeDbusService("com.victronenergy.molu", register=False)
         self.service.add_path('/DeviceInstance', 0)
@@ -46,10 +48,13 @@ class MpcHeartbeatService:
     def _on_change(self, path, value):
         # log.info("MpcHeartbeat updated: %s", value)
         self.last_heartbeat = time.time()
+        self.timeout_triggered = False
         return True
 
     def check_watchdog(self):
-        if time.time() - self.last_heartbeat > TIMEOUT_SEC:
+        if self.timeout_triggered is False and time.time() - self.last_heartbeat > TIMEOUT_SEC:
+
+            self.timeout_triggered = True
             log.warning("Heartbeat timeout -> resetting AcPowerSetPoint")
 
             try:
@@ -60,7 +65,6 @@ class MpcHeartbeatService:
 
                 iface = dbus.Interface(obj, 'com.victronenergy.BusItem')
                 iface.SetValue(FALLBACK_WATT)
-                self.last_heartbeat = time.time()
 
             except Exception as e:
                 log.error("Failed to set AcPowerSetPoint: %s", e)
