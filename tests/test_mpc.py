@@ -1,13 +1,19 @@
 from pathlib import Path
 import pandas as pd
+import tomllib
 
 from interfaces.mqtt import Victron_Mqtt_Reader
 from interfaces.get_day_ahead_prices import DayAheadPrice
 from interfaces.get_weather_data import WeatherDataRetriever
 from forecasting.forecasting import ForecastingModel
 from control.optimize import BessOptimizer
-from control.config import MpcConfig
 
+def load_config() -> dict:
+    """Load MPC configuration from a TOML file."""
+
+    config_file = Path(__file__).parent / "config.toml"
+    with open(config_file, "rb") as f:
+        return tomllib.load(f)
 
 def test_first_main_loop_run():
 
@@ -15,9 +21,9 @@ def test_first_main_loop_run():
     victron_mqtt_reader = Victron_Mqtt_Reader()
     my_forecaster = ForecastingModel()
     my_optimizer = BessOptimizer()
+    my_config = load_config()
 
     # Run and test one iteration of the main loop
-    #
     act_soc = victron_mqtt_reader.get_latest_value("soc_percent")
     assert isinstance(act_soc, (int, float)), f"Expected act_soc to be a number, got {type(act_soc)}"
     assert 0 <= act_soc <= 100, f"Expected act_soc to be between 0 and 100, got {act_soc}"
@@ -63,7 +69,7 @@ def test_first_main_loop_run():
     assert netload_forecast_kw.std() >= 1, f"Got {netload_forecast_kw.std()}"
 
     optimization_results = my_optimizer.optimize(
-        my_config=MpcConfig(),
+        my_config=my_config,
         price_sell_eur_kwh=price_sell_eur_kwh,
         price_buy_eur_kwh=price_buy_eur_kwh,
         net_load_kw=netload_forecast_kw,

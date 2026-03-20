@@ -25,7 +25,7 @@ dependencies = [
     "requests-cache",
     "retry-requests",
     "loadforecasting-models",
-    "ipywidgets"
+    "ipywidgets",
     "pyarrow",
     "nbformat"
 ]

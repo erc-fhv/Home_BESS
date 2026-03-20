@@ -15,7 +15,7 @@ class Victron_Mqtt_Reader:
             my_file = json.load(f)
         self.portal_id = my_file["PORTAL_ID"]
         self.username = my_file["USER"]
-        self.pw = my_file["VR_PW"]
+        self.pw = my_file["VICTRON_MQTT_API_KEY"]
         self.broker = "mqtt.victronenergy.com"
         self.port = 8883
         self.latest_packets = {}
