@@ -15,9 +15,9 @@ class DayAheadPrice:
         ) -> pd.Series:
         """Return day-ahead Epex electricity prices in EUR/kWh."""
 
-        # Set default date range to today if not provided
         if start_date is None:
-            start_date = pd.Timestamp.now(tz="Europe/Vienna")
+            # Take the current time rounded down to the nearest 15 minutes
+            start_date = pd.Timestamp.now(tz="Europe/Vienna").floor("15min")
         if end_date is None:
             # Price horizon is max. 1.5 days, so 2 days ensures we get all relevant prices
             end_date = start_date + pd.Timedelta(days=2)
@@ -60,11 +60,13 @@ class DayAheadPrice:
     def get_prices(
         price_type:str,
         store_to_file: Path | None = None,
+        start_date: pd.Timestamp | None = None,
         ) -> tuple[pd.Series, pd.Series]:
         """Define sell and buy prices (in EUR/kWh)"""
 
         price_type = price_type.lower()
-        epex_prices = DayAheadPrice.get_epex_prices(store_to_file=store_to_file)
+        epex_prices = DayAheadPrice.get_epex_prices(store_to_file=store_to_file,
+            start_date=start_date)
 
         if price_type == "vkw_dyn":
             price_sell = epex_prices - 0.006  # Subtract 0.6 ct/kWh for selling

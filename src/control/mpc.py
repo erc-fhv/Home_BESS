@@ -18,31 +18,33 @@ class MpcController:
     def run(self):
 
         # Prepare main loop
-        next_exec_time_15min = pd.Timestamp.now(tz="UTC")
+        next_exec_time_15min = pd.Timestamp.now(tz="Europe/Berlin")
         fast_period = 120  # seconds
         victron_mqtt_reader = Victron_Mqtt_Reader()
         my_forecaster = ForecastingModel()
         my_optimizer = BessOptimizer()
-        self.output_file_timestamp = pd.Timestamp.now(tz="UTC")
+        self.output_file_timestamp = pd.Timestamp.now(tz="Europe/Berlin")
         set_netload_kw = None
         next_fast_cycle = next_exec_time_15min + pd.Timedelta(seconds=fast_period)
 
         while True:
             try:
-                current_time = pd.Timestamp.now(tz="UTC")
+                current_time = pd.Timestamp.now(tz="Europe/Berlin")
 
                 # --- Run every 15 minutes ---
                 if current_time >= next_exec_time_15min:
-
-                    mpc_time = current_time
 
                     my_config = self.load_config()
 
                     act_soc_percent = victron_mqtt_reader.get_latest_value("soc_percent")
 
-                    price_sell_eur_kwh, price_buy_eur_kwh = DayAheadPrice.get_prices("vkw_dyn")
+                    price_sell_eur_kwh, price_buy_eur_kwh = DayAheadPrice.get_prices(
+                        "vkw_dyn", start_date=current_time.floor("15min"))
 
                     assert isinstance(price_sell_eur_kwh.index, pd.DatetimeIndex)
+                    assert current_time - pd.Timedelta(minutes=15) < price_sell_eur_kwh.index[0] \
+                        <= current_time, \
+                        f"Act time: {current_time}, price start: {price_sell_eur_kwh.index[0]}"
 
                     weather_data = WeatherDataRetriever.retrieve_weather_data(
                         time_range = price_sell_eur_kwh.index)
@@ -62,7 +64,7 @@ class MpcController:
                     victron_mqtt_reader.set_netload(netload_kw=set_netload_kw)
 
                     self.save_results(price_sell_eur_kwh, price_buy_eur_kwh, netload_forecast_kw,
-                        optimization_results, mpc_time, weather_data)
+                        optimization_results, current_time, weather_data)
 
                     victron_mqtt_reader.start_heartbeat()
 
@@ -96,13 +98,13 @@ class MpcController:
         price_buy_eur_kwh,
         netload_forecast_kw,
         optimization_results,
-        mpc_time,
+        current_time,
         weather_data,
         ) -> None:
         """Save MPC results to a Parquet file for later analysis."""
 
         results_df = pd.DataFrame({
-            "mpc_time": mpc_time,
+            "mpc_time": current_time,
             "netload_forecast_kw": netload_forecast_kw,
             "price_sell_eur_kwh": price_sell_eur_kwh,
             "price_buy_eur_kwh": price_buy_eur_kwh,
