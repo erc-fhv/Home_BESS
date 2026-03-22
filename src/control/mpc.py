@@ -18,25 +18,25 @@ class MpcController:
     def run(self):
 
         # Prepare main loop
-        next_exec_time_15min = time.monotonic()
+        next_exec_time_15min = pd.Timestamp.now(tz="UTC")
         fast_period = 120  # seconds
-        next_fast_cycle = next_exec_time_15min + fast_period
         victron_mqtt_reader = Victron_Mqtt_Reader()
         my_forecaster = ForecastingModel()
         my_optimizer = BessOptimizer()
-        self.output_file_timestamp = pd.Timestamp.now(tz="Europe/Vienna")
+        self.output_file_timestamp = pd.Timestamp.now(tz="UTC")
         set_netload_kw = None
+        next_fast_cycle = next_exec_time_15min + pd.Timedelta(seconds=fast_period)
 
         while True:
             try:
-                current_time = time.monotonic()
+                current_time = pd.Timestamp.now(tz="UTC")
 
                 # --- Run every 15 minutes ---
                 if current_time >= next_exec_time_15min:
 
-                    my_config = self.load_config()
+                    mpc_time = current_time
 
-                    mpc_time = pd.Timestamp.now(tz="Europe/Vienna")
+                    my_config = self.load_config()
 
                     act_soc_percent = victron_mqtt_reader.get_latest_value("soc_percent")
 
@@ -66,9 +66,9 @@ class MpcController:
 
                     victron_mqtt_reader.start_heartbeat()
 
-                    next_exec_time_15min += my_config["mpc"]["interval_minutes"] * 60
+                    next_exec_time_15min = current_time.floor("15min") + pd.Timedelta(minutes=15)
 
-                    next_fast_cycle = time.monotonic() + fast_period  # add settling time
+                    next_fast_cycle = current_time + pd.Timedelta(seconds=fast_period)
 
                 # --- Run every fast_period seconds ---
                 elif current_time >= next_fast_cycle:
@@ -78,7 +78,7 @@ class MpcController:
                         if not np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2):
                             print(f"Warning: Set net load {set_netload_kw:.2f} kW does not match " + \
                                 f"actual net load {act_netload_kw:.2f} kW.")
-                        next_fast_cycle += fast_period
+                        next_fast_cycle += pd.Timedelta(seconds=fast_period)
                     except Exception as e:
                         print(f"Error reading actual net load. Wait and retry. Error: {e}")
 
