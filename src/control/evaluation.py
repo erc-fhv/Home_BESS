@@ -117,9 +117,11 @@ class MpcEvaluationDashboard:
 		fig.add_trace(
 			go.Scatter(
 				x=mpc_result.index,
-				y=mpc_result["netload_forecast_kw"],
+				y=mpc_result["price_buy_eur_kwh"],
+				name="Buy price",
 				mode="lines",
-				line=dict(color="#1f77b4", width=2, shape="hv"),
+				line=dict(color="#2ca02c", width=2, shape="hv"),
+				showlegend=False,
 			),
 			row=1,
 			col=1,
@@ -128,9 +130,24 @@ class MpcEvaluationDashboard:
 		fig.add_trace(
 			go.Scatter(
 				x=mpc_result.index,
-				y=mpc_result["set_netload_kw"],
+				y=mpc_result["price_sell_eur_kwh"],
+				name="Sell price",
 				mode="lines",
-				line=dict(color="#ff7f0e", width=2, shape="hv"),
+				line=dict(color="#2c92a0", width=2, shape="hv"),
+				showlegend=False,
+			),
+			row=1,
+			col=1,
+		)
+
+		fig.add_trace(
+			go.Scatter(
+				x=mpc_result.index,
+				y=mpc_result["netload_forecast_kw"],
+				name="Netload Forecast",
+				mode="lines",
+				line=dict(color="#1f77b4", width=2, shape="hv"),
+				showlegend=False,
 			),
 			row=2,
 			col=1,
@@ -139,9 +156,11 @@ class MpcEvaluationDashboard:
 		fig.add_trace(
 			go.Scatter(
 				x=mpc_result.index,
-				y=mpc_result["price_buy_eur_kwh"],
+				y=mpc_result["soc_percent"],
 				mode="lines",
-				line=dict(color="#2ca02c", width=2, shape="hv"),
+				name="Battery SOC",
+				line=dict(color="#9467bd", width=2, shape="hv"),
+				showlegend=False,
 			),
 			row=3,
 			col=1,
@@ -150,18 +169,20 @@ class MpcEvaluationDashboard:
 		fig.add_trace(
 			go.Scatter(
 				x=mpc_result.index,
-				y=mpc_result["soc_percent"],
+				y=mpc_result["set_netload_kw"],
+				name="Grid Power Setpoint",
+				showlegend=False,
 				mode="lines",
-				line=dict(color="#9467bd", width=2, shape="hv"),
+				line=dict(color="#ff7f0e", width=2, shape="hv"),
 			),
 			row=4,
 			col=1,
 		)
 
-		fig.update_yaxes(title_text="Netload<br>Forecast [kW]", title_standoff=14, automargin=True, row=1, col=1)
-		fig.update_yaxes(title_text="Grid<br>Power [kW]", title_standoff=14, automargin=True, row=2, col=1)
-		fig.update_yaxes(title_text="Energy<br>Price [€/kWh]", title_standoff=14, automargin=True, row=3, col=1)
-		fig.update_yaxes(title_text="Battery<br>SOC [%]", title_standoff=14, automargin=True, row=4, col=1)
+		fig.update_yaxes(title_text="Energy<br>Price [€/kWh]", title_standoff=14, automargin=True, row=1, col=1)
+		fig.update_yaxes(title_text="Netload<br>Forecast [kW]", title_standoff=14, automargin=True, row=2, col=1)
+		fig.update_yaxes(title_text="Battery<br>SOC [%]", title_standoff=14, automargin=True, row=3, col=1)
+		fig.update_yaxes(title_text="Grid<br>Power [kW]", title_standoff=14, automargin=True, row=4, col=1)
 		fig.update_xaxes(title_text="Uhrzeit", tickformat="%H:%M", row=4, col=1)
 
 		fig.update_layout(
@@ -169,7 +190,7 @@ class MpcEvaluationDashboard:
 			template="plotly_white",
 			hovermode="x unified",
 			margin=dict(l=120, r=30, t=60, b=50),
-			showlegend=False,
+			showlegend=True,
 		)
 		return fig
 
