@@ -59,12 +59,12 @@ class ForecastingModel:
     def train_model(self):
 
         # Read in the historic load profile
-        data_file = Path(__file__).resolve().parent.parent / "interfaces" / "energy_data.csv"
+        data_file = Path(__file__).resolve().parent.parent / "data" / \
+            "example_household_without_battery.csv"
         df_load = pd.read_csv(data_file, index_col=0)
         df_load.index = pd.to_datetime(df_load.index, utc=True)
         df_load.index = df_load.index.tz_convert('Europe/Vienna')
-        net_load_profile = df_load['Consumption'] - df_load['Production']
-        net_load_profile = net_load_profile / 1000.0  # Convert from [W] to [kW]
+        net_load_profile = df_load["net_load_kw"]
         net_load_profile = net_load_profile['2025-01-01':'2025-12-31']
 
         # Read in the historic weather data

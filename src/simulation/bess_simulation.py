@@ -10,6 +10,47 @@ from dash import Dash, dcc, html, Input, Output, callback_context, State
 
 from interfaces.get_day_ahead_prices import DayAheadPrice
 
+# ── Styling-Konstanten ───────────────────────────────────────────────────────
+COLOR = {
+    "header":     "#1e293b",
+    "accent":     "#3b82f6",
+    "card":       "#ffffff",
+    "bg":         "#f1f5f9",
+    "border":     "#e2e8f0",
+    "text":       "#334155",
+    "text_light": "#64748b",
+}
+
+CARD = {
+    "backgroundColor": COLOR["card"],
+    "borderRadius": "12px",
+    "padding": "18px 22px",
+    "boxShadow": "0 1px 4px rgba(0,0,0,0.06)",
+    "border": f"1px solid {COLOR['border']}",
+    "flex": "1",
+    "minWidth": "200px",
+}
+
+CARD_TITLE = {
+    "fontWeight": "700",
+    "fontSize": "11px",
+    "color": COLOR["text_light"],
+    "textTransform": "uppercase",
+    "letterSpacing": "1px",
+    "marginBottom": "10px",
+}
+
+BTN = {
+    "padding": "8px 18px",
+    "borderRadius": "8px",
+    "border": f"1px solid {COLOR['border']}",
+    "backgroundColor": COLOR["card"],
+    "cursor": "pointer",
+    "fontWeight": "600",
+    "fontSize": "14px",
+    "color": COLOR["text"],
+}
+
 
 class Bess:
     def __init__(
@@ -52,26 +93,23 @@ class Bess:
 
         # Energieverbrauchs- und Produktionsdaten einlesen
         # todo: ebenfalls automatisch einlesen, falls nicht vorhanden.
-        file_path = Path(__file__).parent / "data" / "example_household_2025.csv"
+        file_path = Path(__file__).parent / "data" / "example_household_without_battery.csv"
         self.df_energy = pd.read_csv(file_path, index_col=0)
         self.df_energy.index = pd.to_datetime(self.df_energy.index, utc=True)
         self.df_energy.index = self.df_energy.index.tz_convert("Europe/Vienna")
-        self.df_energy = self.df_energy / 1000.0  # Umrechnung in kW
 
     def optimize_day(
         self,
         price_sell: pd.Series,    # ct/kWh
         price_buy: pd.Series,     # ct/kWh
-        pv: pd.Series,            # kW
-        load: pd.Series,          # kW
+        net_load: pd.Series,      # kW
         soc0: float,              # kWh
         verbose: bool = True,
         ) -> tuple:
 
         # Konsistenzcheck
         assert price_sell.index.equals(price_buy.index)
-        assert price_buy.index.equals(pv.index)
-        assert pv.index.equals(load.index)
+        assert price_buy.index.equals(net_load.index)
 
         # Definiere Zeitindex und Parameter
         time_points = price_sell.index
@@ -110,9 +148,9 @@ class Bess:
         # Leistungsbilanz
         for p in P:
             model += (
-                pv.iloc[p] + p_buy[p] + p_dis[p]
+                p_buy[p] + p_dis[p] - net_load.iloc[p] - p_sell[p] - p_ch[p]
                 ==
-                load.iloc[p] + p_sell[p] + p_ch[p]
+                0.0
             )
 
         # Zielfunktion: Erlös – Kosten
@@ -163,14 +201,12 @@ class Bess:
             self.price_sell = pd.Series(0.09, index=self.act_prices_epex.index)
             self.price_buy  = pd.Series(0.1272, index=self.act_prices_epex.index)
 
-        self.pv = self.df_energy.loc[act_range]["Production"]
-        self.load_forecast = self.df_energy.loc[act_range]["Consumption"]
+        self.net_load_kw = self.df_energy.loc[act_range]["net_load_kw"]
 
         self.lp_result, self.pulp_model = self.optimize_day(
             price_sell=self.price_sell,
             price_buy=self.price_buy,
-            pv=self.pv,
-            load=self.load_forecast,
+            net_load=self.net_load_kw,
             soc0=0.5 * self.capacity_kwh,
             verbose=verbose,
         )
@@ -183,10 +219,10 @@ class Bess:
             vertical_spacing=0.04,
             subplot_titles=[
                 "EPEX Day-Ahead Preis",
-                "Last und PV-Erzeugung",
+                "Residuallast (= Last - PV)",
                 "Batterie State of Charge",
                 "Netz Einspeisung / Bezug",
-                "Batterieladung",
+                "Batterie Laden / Entladen",
             ],
         )
 
@@ -196,6 +232,7 @@ class Bess:
                 y=self.act_prices_epex.values,
                 line_shape="hv",
                 name="Epex Preis",
+                legendgroup="g1", legend="legend",
             ),
             row=1, col=1,
         )
@@ -206,6 +243,7 @@ class Bess:
                 y=self.price_sell.values,
                 line_shape="hv",
                 name="Einspeisepreis",
+                legendgroup="g1", legend="legend",
             ),
             row=1, col=1,
         )
@@ -216,26 +254,18 @@ class Bess:
                 y=self.price_buy.values,
                 line_shape="hv",
                 name="Bezugspreise",
+                legendgroup="g1", legend="legend",
             ),
             row=1, col=1,
         )
 
         fig.add_trace(
             go.Scatter(
-                x=self.pv.index,
-                y=self.pv.values,
+                x=self.net_load_kw.index,
+                y=self.net_load_kw.values,
                 line_shape="hv",
-                name="PV-Erzeugung",
-            ),
-            row=2, col=1,
-        )
-
-        fig.add_trace(
-            go.Scatter(
-                x=self.load_forecast.index,
-                y=self.load_forecast.values,
-                line_shape="hv",
-                name="Last",
+                name="Residuallast",
+                legendgroup="g2", legend="legend2",
             ),
             row=2, col=1,
         )
@@ -247,6 +277,7 @@ class Bess:
                 y=soc_percent.values,
                 line_shape="hv",
                 name="SOC",
+                legendgroup="g3", legend="legend3",
             ),
             row=3, col=1,
         )
@@ -257,6 +288,7 @@ class Bess:
                 y=self.lp_result["p_sell"].values,
                 line_shape="hv",
                 name="Einspeisung",
+                legendgroup="g4", legend="legend4",
             ),
             row=4, col=1,
         )
@@ -267,6 +299,7 @@ class Bess:
                 y=self.lp_result["p_buy"].values,
                 line_shape="hv",
                 name="Bezug",
+                legendgroup="g4", legend="legend4",
             ),
             row=4, col=1,
         )
@@ -277,6 +310,7 @@ class Bess:
                 y=self.lp_result["p_ch"].values,
                 line_shape="hv",
                 name="Laden",
+                legendgroup="g5", legend="legend5",
             ),
             row=5, col=1,
         )
@@ -287,14 +321,46 @@ class Bess:
                 y=self.lp_result["p_dis"].values,
                 line_shape="hv",
                 name="Entladen",
+                legendgroup="g5", legend="legend5",
             ),
             row=5, col=1,
         )
 
+        # Subplot-Domains für Legendenpositionierung auslesen
+        y_domains = {}
+        for i in range(1, 6):
+            ax = f"yaxis{i}" if i > 1 else "yaxis"
+            y_domains[i] = fig.layout[ax].domain
+
         fig.update_layout(
-            height=900,
+            height=950,
             hovermode="x unified",
             template="plotly_white",
+            font=dict(family="Inter, system-ui, sans-serif", size=12),
+            paper_bgcolor="#f8fafc",
+            plot_bgcolor="#ffffff",
+            margin=dict(t=60, b=30),
+            # Legenden pro Subplot
+            legend=dict(
+                yanchor="top", y=y_domains[1][1], xanchor="left", x=1.01,
+                font=dict(size=11), tracegroupgap=0,
+            ),
+            legend2=dict(
+                yanchor="top", y=y_domains[2][1], xanchor="left", x=1.01,
+                font=dict(size=11), tracegroupgap=0,
+            ),
+            legend3=dict(
+                yanchor="top", y=y_domains[3][1], xanchor="left", x=1.01,
+                font=dict(size=11), tracegroupgap=0,
+            ),
+            legend4=dict(
+                yanchor="top", y=y_domains[4][1], xanchor="left", x=1.01,
+                font=dict(size=11), tracegroupgap=0,
+            ),
+            legend5=dict(
+                yanchor="top", y=y_domains[5][1], xanchor="left", x=1.01,
+                font=dict(size=11), tracegroupgap=0,
+            ),
         )
 
         fig.update_xaxes(
@@ -327,7 +393,7 @@ class Bess:
         )
 
         fig.update_yaxes(
-            title_text="Batterie Laden [kW]",
+            title_text="Leistung [kW]",
             row=5, col=1,
         )
 
@@ -359,140 +425,282 @@ class Bess:
         print(f"Dash app running on http://127.0.0.1:{port}")
 
         app = Dash(__name__)
-        default_residual_profile_path = str(Path(__file__).parent / "output" / "energy_data.csv")
 
+        # ── Layout ───────────────────────────────────────────────────────────
         app.layout = html.Div(
-            [
-                html.H1("Day-Ahead Optimization"),
-
+            style={"backgroundColor": COLOR["bg"], "minHeight": "100vh",
+                    "fontFamily": "Inter, system-ui, -apple-system, sans-serif"},
+            children=[
+                # ── Header ───────────────────────────────────────────────────
                 html.Div(
-                    [
-                        dcc.Input(
-                            id="residual-profile-path",
-                            type="text",
-                            value=default_residual_profile_path,
-                            style={
-                                "flex": "0 0 25%",
-                                "padding": "10px",
-                                "borderRadius": "8px",
-                                "border": "1px solid #ccc",
-                            },
+                    style={"backgroundColor": COLOR["header"],
+                           "padding": "18px 40px",
+                           "boxShadow": "0 2px 8px rgba(0,0,0,0.12)"},
+                    children=html.H1(
+                        "Model Predictive Control Simulation",
+                        style={"color": "#fff", "margin": "0",
+                               "fontSize": "22px", "fontWeight": "700",
+                               "letterSpacing": "-0.3px"},
+                    ),
+                ),
+
+                # ── Main: Sidebar left + Graph right ─────────────────────────
+                html.Div(
+                    style={"display": "flex", "gap": "20px",
+                           "maxWidth": "1600px", "margin": "24px auto",
+                           "padding": "0 24px", "alignItems": "flex-start"},
+                    children=[
+                        # ── Left sidebar (controls) ──────────────────────────
+                        html.Div(
+                            style={"flex": "0 0 280px", "display": "flex",
+                                   "flexDirection": "column", "gap": "14px"},
+                            children=[
+                                # Card: Eingabemodus
+                                html.Div(style=CARD, children=[
+                                    html.Div("Eingabemodus", style=CARD_TITLE),
+                                    dcc.RadioItems(
+                                        id="input-mode",
+                                        options=[
+                                            {"label": " Residuallast",
+                                             "value": "residual"},
+                                            {"label": " Last + Erzeugung",
+                                             "value": "load_gen"},
+                                        ],
+                                        value="residual",
+                                        labelStyle={
+                                            "display": "block",
+                                            "marginBottom": "6px",
+                                            "fontSize": "14px",
+                                            "cursor": "pointer"},
+                                    ),
+                                    html.Hr(style={
+                                        "border": "none",
+                                        "borderTop": f"1px solid {COLOR['border']}",
+                                        "margin": "10px 0"}),
+                                    dcc.Upload(
+                                        id="residual-profile-upload",
+                                        children=html.Button(
+                                            "CSV hochladen",
+                                            style={**BTN, "width": "100%"}),
+                                        multiple=False,
+                                    ),
+                                ]),
+
+                                # Card: Optimierungsziel
+                                html.Div(style=CARD, children=[
+                                    html.Div("Optimierungsziel",
+                                             style=CARD_TITLE),
+                                    dcc.RadioItems(
+                                        id="opt-objective",
+                                        options=[
+                                            {"label": " Profit maximieren",
+                                             "value": "profit"},
+                                            {"label": " Autarkie maximieren",
+                                             "value": "autarky"},
+                                            {"label": " Netzspitzen vermeiden",
+                                             "value": "peak_shaving"},
+                                        ],
+                                        value="profit",
+                                        labelStyle={
+                                            "display": "block",
+                                            "marginBottom": "6px",
+                                            "fontSize": "14px",
+                                            "cursor": "pointer"},
+                                    ),
+                                ]),
+
+                                # Card: Einstellungen
+                                html.Div(style=CARD, children=[
+                                    html.Div("Einstellungen",
+                                             style=CARD_TITLE),
+                                    dcc.Checklist(
+                                        id="allow-feed-in",
+                                        options=[{
+                                            "label": " PV-Einspeisung erlaubt",
+                                            "value": "yes",
+                                        }],
+                                        value=["yes"],
+                                        labelStyle={
+                                            "fontSize": "14px",
+                                            "cursor": "pointer"},
+                                    ),
+                                    html.Hr(style={
+                                        "border": "none",
+                                        "borderTop": f"1px solid {COLOR['border']}",
+                                        "margin": "12px 0"}),
+                                    html.Div("Preismodell",
+                                             style={**CARD_TITLE,
+                                                    "marginTop": "4px"}),
+                                    dcc.RadioItems(
+                                        id="price-source",
+                                        options=[
+                                            {"label": " EPEX Day-Ahead",
+                                             "value": "epex"},
+                                            {"label": " Time-of-Use",
+                                             "value": "time-of-use",
+                                             "disabled": True},
+                                            {"label": " Fix",
+                                             "value": "fix",
+                                             "disabled": True},
+                                        ],
+                                        value="epex",
+                                        labelStyle={
+                                            "display": "block",
+                                            "marginBottom": "5px",
+                                            "fontSize": "14px",
+                                            "cursor": "pointer"},
+                                    ),
+                                ]),
+
+                                # Card: Steuerung
+                                html.Div(style=CARD, children=[
+                                    html.Div("Steuerung", style=CARD_TITLE),
+                                    dcc.RadioItems(
+                                        id="control-algorithm",
+                                        options=[
+                                            {"label": " PV-\u00dcberschussladen",
+                                             "value": "pv-ueberschussladen",
+                                             "disabled": True},
+                                            {"label": " Laden ab 2 kW",
+                                             "value": "time-of-use",
+                                             "disabled": True},
+                                            {"label": " MPC",
+                                             "value": "model-predictive-control"},
+                                        ],
+                                        value="model-predictive-control",
+                                        labelStyle={
+                                            "display": "block",
+                                            "marginBottom": "6px",
+                                            "fontSize": "14px",
+                                            "cursor": "pointer"},
+                                    ),
+                                ]),
+                            ],
                         ),
-                        dcc.Upload(
-                            id="residual-profile-upload",
-                            children=html.Button(
-                                "Get Load",
-                                style={
-                                    "padding": "10px 16px",
-                                    "borderRadius": "8px",
-                                    "border": "1px solid",
-                                    "backgroundColor": "white",
-                                    "cursor": "pointer",
-                                    "fontWeight": "600",
-                                },
+
+                        # ── Right side (tabs) ─────────────────────────────
+                        html.Div(
+                            style={"flex": "1", "minWidth": "0"},
+                            children=dcc.Tabs(
+                                id="main-tabs",
+                                value="tab-day",
+                                style={"marginBottom": "14px"},
+                                children=[
+                                    # ── Tab 1: Tagesansicht ──────────────
+                                    dcc.Tab(
+                                        label="Tagesansicht",
+                                        value="tab-day",
+                                        style={"padding": "10px 20px",
+                                               "fontWeight": "500"},
+                                        selected_style={
+                                            "padding": "10px 20px",
+                                            "fontWeight": "700",
+                                            "borderTop": f"3px solid {COLOR['accent']}",
+                                        },
+                                        children=[
+                                            # Datumsnavigation
+                                            html.Div(
+                                                style={"display": "flex",
+                                                       "alignItems": "center",
+                                                       "gap": "8px",
+                                                       "margin": "14px 0"},
+                                                children=[
+                                                    html.Button(
+                                                        "\u25c0", id="prev-day",
+                                                        n_clicks=0,
+                                                        style={**BTN,
+                                                               "fontSize": "18px",
+                                                               "padding": "6px 14px"}),
+                                                    dcc.DatePickerSingle(
+                                                        id="act-day-picker",
+                                                        min_date_allowed="2025-01-01",
+                                                        max_date_allowed="2025-12-31",
+                                                        date="2025-11-05",
+                                                        display_format="DD.MM.YYYY",
+                                                    ),
+                                                    html.Button(
+                                                        "\u25b6", id="next-day",
+                                                        n_clicks=0,
+                                                        style={**BTN,
+                                                               "fontSize": "18px",
+                                                               "padding": "6px 14px"}),
+                                                ],
+                                            ),
+                                            # Graph
+                                            html.Div(
+                                                style={**CARD,
+                                                       "padding": "12px 16px"},
+                                                children=dcc.Graph(
+                                                    id="result-graph"),
+                                            ),
+                                        ],
+                                    ),
+
+                                    # ── Tab 2: Jahressimulation ──────────
+                                    dcc.Tab(
+                                        label="Jahressimulation",
+                                        value="tab-year",
+                                        style={"padding": "10px 20px",
+                                               "fontWeight": "500"},
+                                        selected_style={
+                                            "padding": "10px 20px",
+                                            "fontWeight": "700",
+                                            "borderTop": f"3px solid {COLOR['accent']}",
+                                        },
+                                        children=[
+                                            html.Div(
+                                                style={**CARD,
+                                                       "marginTop": "14px",
+                                                       "padding": "24px"},
+                                                children=[
+                                                    html.H3(
+                                                        "Jahressimulation",
+                                                        style={
+                                                            "marginTop": "0",
+                                                            "color": COLOR["text"],
+                                                        }),
+                                                    html.P(
+                                                        "Hier wird die Jahresoptimierung "
+                                                        "dargestellt: kumulierter Gewinn, "
+                                                        "Autarkiegrad, Netzbezug und "
+                                                        "-einspeisung pro Monat.",
+                                                        style={
+                                                            "color": COLOR["text_light"],
+                                                            "marginBottom": "16px",
+                                                        }),
+                                                    dcc.Graph(
+                                                        id="year-graph",
+                                                        figure=go.Figure().update_layout(
+                                                            height=600,
+                                                            template="plotly_white",
+                                                            font=dict(
+                                                                family="Inter, sans-serif",
+                                                                size=12),
+                                                            paper_bgcolor="#f8fafc",
+                                                            annotations=[dict(
+                                                                text="Noch nicht implementiert",
+                                                                xref="paper", yref="paper",
+                                                                x=0.5, y=0.5,
+                                                                showarrow=False,
+                                                                font=dict(
+                                                                    size=20,
+                                                                    color=COLOR["text_light"]),
+                                                            )],
+                                                        ),
+                                                    ),
+                                                ],
+                                            ),
+                                        ],
+                                    ),
+                                ],
                             ),
-                            multiple=False,
-                            style={
-                                "display": "inline-block",
-                                "padding": "6px",
-                                # "border": "1px dashed",
-                                "borderRadius": "10px",
-                            },
                         ),
                     ],
-                    style={
-                        "display": "flex",
-                        "alignItems": "center",
-                        "gap": "10px",
-                        "marginBottom": "10px",
-                    },
                 ),
-
-                dcc.RadioItems(
-                    id="control-algorithm",
-                    options=[
-                        {
-                            "label": "PV-Überschussladen",
-                            "value": "pv-ueberschussladen",
-                            "disabled": True,
-                        },
-                        {
-                            "label": "Laden ab 2kW Überschuss",
-                            "value": "time-of-use",
-                            "disabled": True,
-                        },
-                        {
-                            "label": "Model Predictive Control",
-                            "value": "model-predictive-control",
-                            "disabled": False,
-                        },
-                    ],
-                    value="model-predictive-control",
-                    labelStyle={"display": "block", "marginBottom": "6px"},
-                    style={
-                        "width": "25%",
-                        "marginBottom": "12px",
-                        "border": "1px solid #d3d3d3",
-                        "borderRadius": "8px",
-                        "padding": "10px",
-                    },
-                ),
-
-                dcc.RadioItems(
-                    id="price-source",
-                    options=[
-                        {
-                            "label": "epex",
-                            "value": "epex",
-                            "disabled": False,
-                        },
-                        {
-                            "label": "time-of-use",
-                            "value": "time-of-use",
-                            "disabled": True,
-                        },
-                        {
-                            "label": "fix",
-                            "value": "fix",
-                            "disabled": True,
-                        },
-                    ],
-                    value="epex",
-                    labelStyle={"display": "block", "marginBottom": "6px"},
-                    style={
-                        "width": "25%",
-                        "marginBottom": "12px",
-                        "border": "1px solid #d3d3d3",
-                        "borderRadius": "8px",
-                        "padding": "10px",
-                    },
-                ),
-
-                html.Div(
-                    [
-                        html.Button("◀", id="prev-day", n_clicks=0),
-                        dcc.DatePickerSingle(
-                            id="act-day-picker",
-                            min_date_allowed="2025-01-01",
-                            max_date_allowed="2025-12-31",
-                            date="2025-11-05",
-                            display_format="DD.MM.YYYY",
-                        ),
-                        html.Button("▶", id="next-day", n_clicks=0),
-                    ],
-                    style={
-                        "display": "flex",
-                        "alignItems": "center",
-                        "gap": "10px",
-                        "marginBottom": "10px",
-                    },
-                ),
-
-                dcc.Graph(id="result-graph"),
             ],
-            style={"width": "1200px", "margin": "auto"},
         )
 
+        # ── Callbacks ────────────────────────────────────────────────────────
         @app.callback(
             Output("act-day-picker", "date"),
             Input("prev-day", "n_clicks"),
