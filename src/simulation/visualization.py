@@ -58,7 +58,7 @@ def build_figure(bess: Bess) -> go.Figure:
         shared_xaxes=True,
         vertical_spacing=0.04,
         subplot_titles=[
-            "EPEX Day-Ahead Preis",
+            "Strom Preis (brutto)",
             "Residuallast (= Last - PV)",
             "Batterie State of Charge",
             "Netz Einspeisung / Bezug",
@@ -361,7 +361,7 @@ def run_dashboard(
                                     },
                                     children=[
                                         html.Span(
-                                            ("Profil als CSV hochladen - ohne Batterieeinfluss. ",
+                                            ("Profil (ohne Batterieeinfluss) als CSV hochladen. ",
                                              "Erste Spalte Datum/Uhrzeit, zweite Spalte kW-Werte."),
                                             style={"fontWeight": "600"})
                                     ],
@@ -406,6 +406,135 @@ def run_dashboard(
                                 ),
                             ]),
 
+                            # Card: Preismodell
+                            html.Div(style=CARD, children=[
+                                html.Div("Preismodell",
+                                         style=CARD_TITLE),
+                                dcc.RadioItems(
+                                    id="price-source",
+                                    options=[
+                                        {"label": " EPEX Day-Ahead",
+                                         "value": "epex"},
+                                        {"label": " Fixpreis",
+                                         "value": "fix",
+                                         "disabled": False},
+                                    ],
+                                    value="epex",
+                                    labelStyle={
+                                        "display": "block",
+                                        "marginBottom": "5px",
+                                        "fontSize": "14px",
+                                        "cursor": "pointer"},
+                                ),
+                                # EPEX Offsets
+                                html.Div(
+                                    id="epex-params",
+                                    style={"marginTop": "10px"},
+                                    children=[
+                                        html.Div("Einspeisung Abschlag [ct/kWh]",
+                                                 style={"fontSize": "12px",
+                                                        "color": COLOR["text_light"],
+                                                        "marginBottom": "3px"}),
+                                        dcc.Input(
+                                            id="epex-offset-sell",
+                                            type="number",
+                                            value=0.6, step=0.1,
+                                            style={"width": "100%",
+                                                   "padding": "6px 10px",
+                                                   "borderRadius": "6px",
+                                                   "border": f"1px solid {COLOR['border']}",
+                                                   "fontSize": "13px"},
+                                        ),
+                                        html.Div("Bezug Aufschlag [ct/kWh]",
+                                                 style={"fontSize": "12px",
+                                                        "color": COLOR["text_light"],
+                                                        "marginBottom": "3px"}),
+                                        dcc.Input(
+                                            id="epex-offset-buy",
+                                            type="number",
+                                            value=1.44, step=0.01,
+                                            style={"width": "100%",
+                                                   "padding": "6px 10px",
+                                                   "borderRadius": "6px",
+                                                   "border": f"1px solid {COLOR['border']}",
+                                                   "fontSize": "13px",
+                                                   "marginBottom": "8px"},
+                                        ),
+                                    ],
+                                ),
+                                # Fixpreise
+                                html.Div(
+                                    id="fix-params",
+                                    style={"display": "none",
+                                           "marginTop": "10px"},
+                                    children=[
+                                        html.Div("Bezugspreis [ct/kWh]",
+                                                 style={"fontSize": "12px",
+                                                        "color": COLOR["text_light"],
+                                                        "marginBottom": "3px"}),
+                                        dcc.Input(
+                                            id="fix-price-buy",
+                                            type="number",
+                                            value=12.72, step=0.01,
+                                            style={"width": "100%",
+                                                   "padding": "6px 10px",
+                                                   "borderRadius": "6px",
+                                                   "border": f"1px solid {COLOR['border']}",
+                                                   "fontSize": "13px",
+                                                   "marginBottom": "8px"},
+                                        ),
+                                        html.Div("Einspeisepreis [ct/kWh]",
+                                                 style={"fontSize": "12px",
+                                                        "color": COLOR["text_light"],
+                                                        "marginBottom": "3px"}),
+                                        dcc.Input(
+                                            id="fix-price-sell",
+                                            type="number",
+                                            value=9.0, step=0.1,
+                                            style={"width": "100%",
+                                                   "padding": "6px 10px",
+                                                   "borderRadius": "6px",
+                                                   "border": f"1px solid {COLOR['border']}",
+                                                   "fontSize": "13px"},
+                                        ),
+                                    ],
+                                ),
+                                # Netzentgelt + USt (gilt für beide Preismodelle)
+                                html.Hr(style={
+                                    "border": "none",
+                                    "borderTop": f"1px solid {COLOR['border']}",
+                                    "margin": "10px 0"}),
+                                html.Div("Bezug Netzentgelt [ct/kWh]",
+                                         style={"fontSize": "12px",
+                                                "color": COLOR["text_light"],
+                                                "marginBottom": "3px"}),
+                                dcc.Input(
+                                    id="grid-fee",
+                                    type="number",
+                                    value=6.0, step=0.1,
+                                    style={"width": "100%",
+                                           "padding": "6px 10px",
+                                           "borderRadius": "6px",
+                                           "border": f"1px solid {COLOR['border']}",
+                                           "fontSize": "13px",
+                                           "marginBottom": "8px"},
+                                ),
+                                html.Div("Bezug Umsatzsteuer [%]",
+                                         style={"fontSize": "12px",
+                                                "color": COLOR["text_light"],
+                                                "marginBottom": "3px"}),
+                                dcc.Input(
+                                    id="vat",
+                                    type="number",
+                                    value=20.0, step=0.1,
+                                    style={"width": "100%",
+                                           "padding": "6px 10px",
+                                           "borderRadius": "6px",
+                                           "border": f"1px solid {COLOR['border']}",
+                                           "fontSize": "13px"},
+                                ),
+                            ]),
+
                             # Card: Optimierungsziel
                             html.Div(style=CARD, children=[
                                 html.Div("Optimierungsziel",
@@ -429,10 +558,9 @@ def run_dashboard(
                                 ),
                             ]),
 
-                            # Card: Einstellungen
+                            # Card: Steuerung
                             html.Div(style=CARD, children=[
-                                html.Div("Einstellungen",
-                                         style=CARD_TITLE),
+                                html.Div("Steuerung", style=CARD_TITLE),
                                 dcc.Checklist(
                                     id="allow-feed-in",
                                     options=[{
@@ -448,33 +576,6 @@ def run_dashboard(
                                     "border": "none",
                                     "borderTop": f"1px solid {COLOR['border']}",
                                     "margin": "12px 0"}),
-                                html.Div("Preismodell",
-                                         style={**CARD_TITLE,
-                                                "marginTop": "4px"}),
-                                dcc.RadioItems(
-                                    id="price-source",
-                                    options=[
-                                        {"label": " EPEX Day-Ahead",
-                                         "value": "epex"},
-                                        {"label": " Time-of-Use",
-                                         "value": "time-of-use",
-                                         "disabled": True},
-                                        {"label": " Fix",
-                                         "value": "fix",
-                                         "disabled": True},
-                                    ],
-                                    value="epex",
-                                    labelStyle={
-                                        "display": "block",
-                                        "marginBottom": "5px",
-                                        "fontSize": "14px",
-                                        "cursor": "pointer"},
-                                ),
-                            ]),
-
-                            # Card: Steuerung
-                            html.Div(style=CARD, children=[
-                                html.Div("Steuerung", style=CARD_TITLE),
                                 dcc.RadioItems(
                                     id="control-algorithm",
                                     options=[
@@ -559,7 +660,7 @@ def run_dashboard(
 
                                 # ── Tab 2: Jahressimulation ──────────
                                 dcc.Tab(
-                                    label="Jahressimulation",
+                                    label="Gesamtsimulation",
                                     value="tab-year",
                                     style={"padding": "10px 20px",
                                            "fontWeight": "500"},
@@ -633,6 +734,16 @@ def run_dashboard(
         return {"display": "block"}, {"display": "none"}
 
     @app.callback(
+        Output("epex-params", "style"),
+        Output("fix-params", "style"),
+        Input("price-source", "value"),
+    )
+    def toggle_price_params(source):
+        if source == "fix":
+            return {"display": "none"}, {"display": "block", "marginTop": "10px"}
+        return {"display": "block", "marginTop": "10px"}, {"display": "none"}
+
+    @app.callback(
         Output("act-day-picker", "date"),
         Input("prev-day", "n_clicks"),
         Input("next-day", "n_clicks"),
@@ -672,11 +783,21 @@ def run_dashboard(
         Input("residual-profile-upload", "contents"),
         Input("load-profile-upload", "contents"),
         Input("gen-profile-upload", "contents"),
+        Input("price-source", "value"),
+        Input("epex-offset-buy", "value"),
+        Input("epex-offset-sell", "value"),
+        Input("grid-fee", "value"),
+        Input("vat", "value"),
+        Input("fix-price-buy", "value"),
+        Input("fix-price-sell", "value"),
         State("input-mode", "value"),
         prevent_initial_call=True,
     )
     def update_graph(act_day, residual_contents, load_contents,
-                     gen_contents, input_mode):
+                     gen_contents, price_source, epex_offset_buy,
+                     epex_offset_sell, grid_fee, vat,
+                     fix_price_buy, fix_price_sell,
+                     input_mode):
 
         ctx = callback_context
         triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
@@ -703,7 +824,14 @@ def run_dashboard(
         if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
             act_day = min_date if min_date.tzinfo else min_date.tz_localize("Europe/Vienna")
 
-        bess.run(act_day=act_day, use_dynamic_prices=use_dynamic_prices,
+        bess.run(act_day=act_day,
+                 use_dynamic_prices=(price_source == "epex"),
+                 epex_offset_buy=(epex_offset_buy or 0) / 100.0,
+                 epex_offset_sell=(epex_offset_sell or 0) / 100.0,
+                 grid_fee=(grid_fee or 0) / 100.0,
+                 vat=(vat or 0) / 100.0,
+                 fix_price_buy=(fix_price_buy or 0) / 100.0,
+                 fix_price_sell=(fix_price_sell or 0) / 100.0,
                  verbose=False)
         return build_figure(bess), act_day.date(), min_date.date(), max_date.date()
 

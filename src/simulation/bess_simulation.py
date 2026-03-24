@@ -152,7 +152,13 @@ class Bess:
     def run(
         self,
         act_day: pd.Timestamp,
-        use_dynamic_prices: bool = True,
+        use_dynamic_prices: bool,
+        epex_offset_buy: float,
+        epex_offset_sell: float,
+        grid_fee: float,
+        vat: float,
+        fix_price_buy: float,
+        fix_price_sell: float,
         verbose: bool = False,
         ) -> None:
 
@@ -165,13 +171,13 @@ class Bess:
         self.act_prices_epex = self.prices_epex.loc[act_range]
 
         if use_dynamic_prices:
-            # VKW dynmaische Preise in EUR/kWh
-            self.price_sell = self.act_prices_epex - 0.006
-            self.price_buy  = self.act_prices_epex + 0.0144
+            # VKW dynamische Preise in EUR/kWh
+            self.price_sell = self.act_prices_epex - epex_offset_sell
+            self.price_buy  = (self.act_prices_epex + epex_offset_buy + grid_fee) * (1 + vat)
         else:
-            # fixe Preise in ct/kWh
-            self.price_sell = pd.Series(0.09, index=self.act_prices_epex.index)
-            self.price_buy  = pd.Series(0.1272, index=self.act_prices_epex.index)
+            # fixe Preise in EUR/kWh
+            self.price_sell = pd.Series(fix_price_sell, index=self.act_prices_epex.index)
+            self.price_buy  = pd.Series((fix_price_buy + grid_fee) * (1 + vat), index=self.act_prices_epex.index)
 
         self.net_load_kw = self.df_energy.loc[act_range]["net_load_kw"]
 

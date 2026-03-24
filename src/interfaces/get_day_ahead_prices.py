@@ -63,6 +63,12 @@ class DayAheadPrice:
         price_type:str,
         store_to_file: Path | None = None,
         start_date: pd.Timestamp | None = None,
+        epex_offset_buy: float = 0.0144,
+        epex_offset_sell: float = 0.006,
+        grid_fee: float = 0.06,
+        vat: float = 0.20,
+        fix_price_buy: float = 0.1272,
+        fix_price_sell: float = 0.09,
         ) -> tuple[pd.Series, pd.Series]:
         """Define sell and buy prices (in EUR/kWh)"""
 
@@ -71,11 +77,14 @@ class DayAheadPrice:
             start_date=start_date)
 
         if price_type == "vkw_dyn":
-            price_sell = epex_prices - 0.006  # Subtract 0.6 ct/kWh for selling
-            price_buy = epex_prices + 0.0144  # Add 1.44 ct/kWh for buying
+            # VKW dynamische Preise in EUR/kWh
+            price_sell = epex_prices - epex_offset_sell
+            price_buy  = (epex_prices + epex_offset_buy + grid_fee) * (1 + vat)
         elif price_type == "vkw_fix":
-            price_sell = pd.Series(0.09, index=epex_prices.index)
-            price_buy  = pd.Series(0.1272, index=epex_prices.index)
+            price_sell = pd.Series(fix_price_sell, index=epex_prices.index)
+            price_buy  = pd.Series((fix_price_buy + grid_fee) * (1 + vat),
+                index=epex_prices.index)
+
         else:
             raise ValueError(f"Unsupported price type: {price_type}")
 
