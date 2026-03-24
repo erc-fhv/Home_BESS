@@ -535,10 +535,41 @@ def run_dashboard(
                                 ),
                             ]),
 
-                            # Card: Optimierungsziel
+                            # Card: Steuerung
                             html.Div(style=CARD, children=[
-                                html.Div("Optimierungsziel",
+                                html.Div("Steuerung",
                                          style=CARD_TITLE),
+                                dcc.RadioItems(
+                                    id="control-algorithm",
+                                    options=[
+                                        {"label": " PV-\u00dcberschussladen",
+                                         "value": "pv-ueberschussladen",
+                                         "disabled": False},
+                                        {"label": " Model Predictive Control",
+                                         "value": "model-predictive-control"},
+                                    ],
+                                    value="model-predictive-control",
+                                    labelStyle={
+                                        "display": "block",
+                                        "marginBottom": "6px",
+                                        "fontSize": "14px",
+                                        "cursor": "pointer"},
+                                ),
+                                html.Hr(style={
+                                    "border": "none",
+                                    "borderTop": f"1px solid {COLOR['border']}",
+                                    "margin": "12px 0"}),
+                                dcc.Checklist(
+                                    id="allow-feed-in",
+                                    options=[{
+                                        "label": " Batterie-Einspeisung verbieten",
+                                        "value": "yes",
+                                    }],
+                                    value=["no"],
+                                    labelStyle={
+                                        "fontSize": "14px",
+                                        "cursor": "pointer"},
+                                ),
                                 dcc.RadioItems(
                                     id="opt-objective",
                                     options=[
@@ -550,45 +581,6 @@ def run_dashboard(
                                          "value": "peak_shaving"},
                                     ],
                                     value="profit",
-                                    labelStyle={
-                                        "display": "block",
-                                        "marginBottom": "6px",
-                                        "fontSize": "14px",
-                                        "cursor": "pointer"},
-                                ),
-                            ]),
-
-                            # Card: Steuerung
-                            html.Div(style=CARD, children=[
-                                html.Div("Steuerung", style=CARD_TITLE),
-                                dcc.Checklist(
-                                    id="allow-feed-in",
-                                    options=[{
-                                        "label": " PV-Einspeisung erlaubt",
-                                        "value": "yes",
-                                    }],
-                                    value=["yes"],
-                                    labelStyle={
-                                        "fontSize": "14px",
-                                        "cursor": "pointer"},
-                                ),
-                                html.Hr(style={
-                                    "border": "none",
-                                    "borderTop": f"1px solid {COLOR['border']}",
-                                    "margin": "12px 0"}),
-                                dcc.RadioItems(
-                                    id="control-algorithm",
-                                    options=[
-                                        {"label": " PV-\u00dcberschussladen",
-                                         "value": "pv-ueberschussladen",
-                                         "disabled": True},
-                                        {"label": " Laden ab 2 kW",
-                                         "value": "time-of-use",
-                                         "disabled": True},
-                                        {"label": " MPC",
-                                         "value": "model-predictive-control"},
-                                    ],
-                                    value="model-predictive-control",
                                     labelStyle={
                                         "display": "block",
                                         "marginBottom": "6px",
@@ -742,6 +734,29 @@ def run_dashboard(
         if source == "fix":
             return {"display": "none"}, {"display": "block", "marginTop": "10px"}
         return {"display": "block", "marginTop": "10px"}, {"display": "none"}
+
+    @app.callback(
+        Output("allow-feed-in", "options"),
+        Output("opt-objective", "options"),
+        Input("control-algorithm", "value"),
+    )
+    def toggle_mpc_options(algorithm):
+        disabled = algorithm == "pv-ueberschussladen"
+        disabled = True # molu
+        feed_in_opts = [{
+            "label": " Batterie-Einspeisung verbieten",
+            "value": "yes",
+            "disabled": disabled,
+        }]
+        obj_opts = [
+            {"label": " Maximiere Profit",
+             "value": "profit", "disabled": disabled},
+            {"label": " Maximiere Autarkie",
+             "value": "autarky", "disabled": disabled},
+            {"label": " Minimiere Netzspitzen",
+             "value": "peak_shaving", "disabled": disabled},
+        ]
+        return feed_in_opts, obj_opts
 
     @app.callback(
         Output("act-day-picker", "date"),
