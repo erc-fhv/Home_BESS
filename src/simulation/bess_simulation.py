@@ -30,20 +30,7 @@ class Bess:
         self.price_sell = pd.Series()
         self.price_buy = pd.Series()
 
-        # Epex Preise einlesen
-        file_path = Path(__file__).parent / "data" / "epex_prices_2025.csv"
-        if not file_path.exists():
-            DayAheadPrice.get_epex_prices(
-                country_code="AT",
-                start_date=pd.Timestamp("2025-01-01", tz="Europe/Vienna"),
-                end_date=pd.Timestamp("2025-12-24", tz="Europe/Vienna"),
-                store_to_file=file_path,
-                )
-        df_prices_epex = pd.read_csv(file_path, index_col=0)
-        df_prices_epex.index = pd.to_datetime(df_prices_epex.index, utc=True)
-        df_prices_epex.index = df_prices_epex.index.tz_convert("Europe/Vienna")
-        self.prices_epex = df_prices_epex["day_ahead_price_eur_kWh"]
-        self.prices_epex = self.prices_epex.resample('15min').ffill()
+        self._load_epex_prices()
 
         # Energieverbrauchs- und Produktionsdaten einlesen
         # todo: ebenfalls automatisch einlesen, falls nicht vorhanden.
@@ -51,6 +38,37 @@ class Bess:
         self.df_energy = pd.read_csv(file_path, index_col=0)
         self.df_energy.index = pd.to_datetime(self.df_energy.index, utc=True)
         self.df_energy.index = self.df_energy.index.tz_convert("Europe/Vienna")
+
+    def _load_epex_prices(self) -> None:
+        """EPEX-Preise aus CSV laden und fehlende Daten via API nachladen."""
+        file_path = Path(__file__).parent / "data" / "epex_prices.csv"
+        now = pd.Timestamp.now(tz="Europe/Vienna").floor("1D")
+
+        if file_path.exists():
+            df_prices = pd.read_csv(file_path, index_col=0)
+            df_prices.index = pd.to_datetime(df_prices.index, utc=True)
+            df_prices.index = df_prices.index.tz_convert("Europe/Vienna")
+            last_ts = df_prices.index.max().floor("1D")
+
+            if last_ts < now:
+                new_prices = DayAheadPrice.get_epex_prices(
+                    country_code="AT",
+                    start_date=last_ts,
+                    end_date=now,
+                )
+                if not new_prices.empty:
+                    df_new = new_prices.to_frame(name="day_ahead_price_eur_kWh")
+                    df_prices = pd.concat([df_prices, df_new])
+                    df_prices = df_prices[
+                        ~df_prices.index.duplicated(keep="last")]
+                    df_prices.sort_index(inplace=True)
+                    df_prices.index.name = "timestamp"
+                    df_prices.to_csv(file_path)
+        else:
+            raise FileNotFoundError(f"EPEX price file '{file_path}' not found.")
+
+        self.prices_epex = df_prices["day_ahead_price_eur_kWh"]
+        self.prices_epex = self.prices_epex.resample('15min').ffill()
 
     def optimize_day(
         self,

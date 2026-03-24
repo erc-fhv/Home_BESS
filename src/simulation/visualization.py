@@ -233,26 +233,53 @@ def build_figure(bess: Bess) -> go.Figure:
     return fig
 
 
-def parse_vkw_csv(contents: str) -> pd.DataFrame:
-    """Parst VKW-Smartmeter-CSV (4 Header-Zeilen, Semikolon,
-    Spalten: Beginn;Ende;Messwert)."""
+def parse_csv(contents: str) -> pd.DataFrame:
+    """Parst hochgeladene CSV-Dateien.
+
+    Erkennt automatisch:
+    - VKW-Smartmeter-Format (4 Header-Zeilen, Semikolon, Latin-1)
+    - Einfaches CSV (1 Header-Zeile, erste Spalte=Datetime, zweite=kW)
+    """
     _, content_string = contents.split(",", maxsplit=1)
-    decoded = base64.b64decode(content_string).decode("utf-8")
-    df = pd.read_csv(
-        StringIO(decoded),
-        sep=";",
-        skiprows=4,
-        decimal=",",
-    )
-    df.columns = df.columns.str.strip()
-    df["ts"] = pd.to_datetime(
-        df["Beginn der Messung"],
-        format="%d.%m.%Y %H:%M:%S",
-    )
-    df["ts"] = df["ts"].dt.tz_localize("Europe/Vienna")
-    df = df.set_index("ts")
-    df["value_kw"] = pd.to_numeric(
-        df["Messwert"], errors="coerce").fillna(0.0)
+    raw = base64.b64decode(content_string)
+
+    # Versuche Latin-1 (VKW) und UTF-8
+    try:
+        decoded = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        decoded = raw.decode("latin-1")
+
+    lines = decoded.strip().splitlines()
+    first_line = lines[0].strip()
+
+    # VKW-Format: erste Zeile beginnt nicht mit typischen CSV-Headern
+    # und enthält Semikolons in den Datenzeilen
+    is_vkw = ";" in lines[min(4, len(lines) - 1)] and "Messwert" in decoded
+
+    if is_vkw:
+        df = pd.read_csv(
+            StringIO(decoded), sep=";", skiprows=4, decimal=",",
+        )
+        df.columns = df.columns.str.strip()
+        df["ts"] = pd.to_datetime(
+            df["Beginn der Messung"], format="%d.%m.%Y %H:%M:%S",
+        )
+        df["ts"] = df["ts"].dt.tz_localize("Europe/Vienna")
+        df = df.set_index("ts")
+        df["value_kw"] = pd.to_numeric(
+            df["Messwert"], errors="coerce").fillna(0.0)
+    else:
+        # Einfaches CSV: Spalte 1 = Datetime, Spalte 2 = Wert in kW
+        df = pd.read_csv(StringIO(decoded))
+        df.columns = df.columns.str.strip()
+        ts_col = df.columns[0]
+        val_col = df.columns[1]
+        df["ts"] = pd.to_datetime(df[ts_col], utc=True).dt.tz_convert(
+            "Europe/Vienna")
+        df = df.set_index("ts")
+        df["value_kw"] = pd.to_numeric(
+            df[val_col], errors="coerce").fillna(0.0)
+
     return df[["value_kw"]]
 
 
@@ -264,7 +291,11 @@ def run_dashboard(
 
     print(f"Dash app running on http://127.0.0.1:{port}")
 
-    app = Dash(__name__)
+    app = Dash(__name__, title="FHV FZE - Lastmanagement Simulation")
+
+    # Verfügbare Tage aus dem aktuellen Datensatz
+    _first_date = bess.df_energy.index.min().normalize()
+    _last_date = bess.df_energy.index.max().normalize()
 
     # ── Layout ───────────────────────────────────────────────────────────
     app.layout = html.Div(
@@ -277,7 +308,7 @@ def run_dashboard(
                        "padding": "18px 40px",
                        "boxShadow": "0 2px 8px rgba(0,0,0,0.12)"},
                 children=html.H1(
-                    "Model Predictive Control Simulation",
+                    "FHV FZE - Lastmanagement Simulation",
                     style={"color": "#fff", "margin": "0",
                            "fontSize": "22px", "fontWeight": "700",
                            "letterSpacing": "-0.3px"},
@@ -296,7 +327,7 @@ def run_dashboard(
                                "flexDirection": "column", "gap": "14px"},
                         children=[
                             html.Div(style=CARD, children=[
-                                html.Div("Daten", style=CARD_TITLE),
+                                html.Div("Daten Input", style=CARD_TITLE),
                                 dcc.RadioItems(
                                     id="input-mode",
                                     options=[
@@ -316,6 +347,25 @@ def run_dashboard(
                                     "border": "none",
                                     "borderTop": f"1px solid {COLOR['border']}",
                                     "margin": "10px 0"}),
+                                html.Div(
+                                    id="input-instructions",
+                                    style={
+                                        "fontSize": "12px",
+                                        "color": COLOR["text_light"],
+                                        "backgroundColor": "#f8fafc",
+                                        "borderRadius": "6px",
+                                        "padding": "10px 12px",
+                                        "lineHeight": "1.5",
+                                        "marginBottom": "10px",
+                                        "border": f"1px solid {COLOR['border']}",
+                                    },
+                                    children=[
+                                        html.Span(
+                                            ("Profil als CSV hochladen - ohne Batterieeinfluss. ",
+                                             "Erste Spalte Datum/Uhrzeit, zweite Spalte kW-Werte."),
+                                            style={"fontWeight": "600"})
+                                    ],
+                                ),
                                 # Upload: Residuallast (1 CSV)
                                 html.Div(
                                     id="upload-residual",
@@ -323,7 +373,7 @@ def run_dashboard(
                                         dcc.Upload(
                                             id="residual-profile-upload",
                                             children=html.Button(
-                                                "Residuallast CSV",
+                                                "Upload Residuallast",
                                                 style={**BTN,
                                                        "width": "100%"}),
                                             multiple=False,
@@ -338,7 +388,7 @@ def run_dashboard(
                                         dcc.Upload(
                                             id="load-profile-upload",
                                             children=html.Button(
-                                                "Last CSV",
+                                                "Upload Last",
                                                 style={**BTN,
                                                        "width": "100%"}),
                                             multiple=False,
@@ -347,7 +397,7 @@ def run_dashboard(
                                         dcc.Upload(
                                             id="gen-profile-upload",
                                             children=html.Button(
-                                                "Erzeugung CSV",
+                                                "Upload PV",
                                                 style={**BTN,
                                                        "width": "100%"}),
                                             multiple=False,
@@ -501,7 +551,8 @@ def run_dashboard(
                                             style={**CARD,
                                                    "padding": "12px 16px"},
                                             children=dcc.Graph(
-                                                id="result-graph"),
+                                                id="result-graph",
+                                                style={"height": "950px"}),
                                         ),
                                     ],
                                 ),
@@ -586,8 +637,10 @@ def run_dashboard(
         Input("prev-day", "n_clicks"),
         Input("next-day", "n_clicks"),
         State("act-day-picker", "date"),
+        State("act-day-picker", "min_date_allowed"),
+        State("act-day-picker", "max_date_allowed"),
     )
-    def shift_day(prev_clicks, next_clicks, current_date):
+    def shift_day(prev_clicks, next_clicks, current_date, min_date, max_date):
         if current_date is None:
             return current_date
 
@@ -603,38 +656,56 @@ def run_dashboard(
         elif triggered_id == "next-day":
             date += pd.Timedelta(days=1)
 
-        date = max(pd.Timestamp("2025-01-01"), date)
-        date = min(pd.Timestamp("2025-12-31"), date)
+        if min_date:
+            date = max(pd.Timestamp(min_date), date)
+        if max_date:
+            date = min(pd.Timestamp(max_date), date)
 
         return date.date()
 
     @app.callback(
         Output("result-graph", "figure"),
+        Output("act-day-picker", "date", allow_duplicate=True),
+        Output("act-day-picker", "min_date_allowed"),
+        Output("act-day-picker", "max_date_allowed"),
         Input("act-day-picker", "date"),
         Input("residual-profile-upload", "contents"),
         Input("load-profile-upload", "contents"),
         Input("gen-profile-upload", "contents"),
         State("input-mode", "value"),
+        prevent_initial_call=True,
     )
     def update_graph(act_day, residual_contents, load_contents,
                      gen_contents, input_mode):
 
-        if input_mode == "load_gen":
-            if load_contents and gen_contents:
-                df_load = parse_vkw_csv(load_contents)
-                df_gen = parse_vkw_csv(gen_contents)
-                net = df_load["value_kw"] - df_gen["value_kw"]
+        ctx = callback_context
+        triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
+
+        # Nur bei Upload neu parsen, nicht bei Datumswechsel
+        if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
+            if input_mode == "load_gen":
+                if load_contents and gen_contents:
+                    df_load = parse_csv(load_contents)
+                    df_gen = parse_csv(gen_contents)
+                    net = df_load["value_kw"] - df_gen["value_kw"]
+                    bess.df_energy = pd.DataFrame(
+                        {"net_load_kw": net})
+            elif residual_contents:
+                df_res = parse_csv(residual_contents)
                 bess.df_energy = pd.DataFrame(
-                    {"net_load_kw": net})
-        elif residual_contents:
-            df_res = parse_vkw_csv(residual_contents)
-            bess.df_energy = pd.DataFrame(
-                {"net_load_kw": df_res["value_kw"]})
+                    {"net_load_kw": df_res["value_kw"]})
+
+        min_date = bess.df_energy.index.min().normalize()
+        max_date = bess.df_energy.index.max().normalize()
 
         act_day = pd.Timestamp(act_day, tz="Europe/Vienna")
+        # Bei neuem Upload auf ersten verfuegbaren Tag springen
+        if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
+            act_day = min_date if min_date.tzinfo else min_date.tz_localize("Europe/Vienna")
+
         bess.run(act_day=act_day, use_dynamic_prices=use_dynamic_prices,
                  verbose=False)
-        return build_figure(bess)
+        return build_figure(bess), act_day.date(), min_date.date(), max_date.date()
 
     app.run(debug=True, port=port)
 

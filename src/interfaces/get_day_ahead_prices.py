@@ -41,9 +41,11 @@ class DayAheadPrice:
             f"Expected DatetimeIndex, got {type(prices.index)}"
         assert prices.index.tz is not None and str(prices.index.tz) == "Europe/Vienna", \
             f"Expected timezone 'Europe/Vienna', got {prices.index.tz}"
-        median_freq = prices.index.to_series().diff().median()
-        assert median_freq == pd.Timedelta(minutes=15), \
-            f"Expected frequency of 15 minutes, got {median_freq}"
+        if len(prices) > 1:
+            median_freq = prices.index.to_series().diff().median()
+            assert median_freq == pd.Timedelta(minutes=15) \
+                or median_freq == pd.Timedelta(minutes=60), \
+                f"Expected frequency of 15 or 60 minutes, got {median_freq}"
 
         # Convert prices from EUR/MWh to EUR/kWh
         prices = prices / 1000.0
