@@ -322,16 +322,16 @@ def build_figure(bess: Bess) -> go.Figure:
 
 def build_year_figure(result_df: pd.DataFrame) -> go.Figure:
     fig = make_subplots(
-        rows=2,
+        rows=3,
         cols=1,
         shared_xaxes=False,
-        vertical_spacing=0.14,
-        subplot_titles=["Kumulierter Gewinn", "Monatliche Energiefluesse"],
+        vertical_spacing=0.10,
+        subplot_titles=["Kumulierter Gewinn", "Gewinn pro Monat", "Monatliche Energiefluesse"],
     )
 
     if result_df.empty:
         fig.update_layout(
-            height=620,
+            height=900,
             template="plotly_white",
             paper_bgcolor="#f8fafc",
             plot_bgcolor="#ffffff",
@@ -352,6 +352,7 @@ def build_year_figure(result_df: pd.DataFrame) -> go.Figure:
     df["cum_profit_eur"] = df["profit_eur"].cumsum()
 
     monthly = df.resample("MS").agg({
+        "profit_eur": "sum",
         "grid_import_kwh": "sum",
         "grid_export_kwh": "sum",
     })
@@ -363,8 +364,22 @@ def build_year_figure(result_df: pd.DataFrame) -> go.Figure:
             mode="lines",
             name="Kumulierter Gewinn",
             line=dict(color="#0f766e", width=3),
+            showlegend=False,
         ),
         row=1,
+        col=1,
+    )
+
+    colors = ["#16a34a" if v >= 0 else "#dc2626" for v in monthly["profit_eur"]]
+    fig.add_trace(
+        go.Bar(
+            x=monthly.index,
+            y=monthly["profit_eur"],
+            name="Gewinn",
+            marker_color=colors,
+            showlegend=False,
+        ),
+        row=2,
         col=1,
     )
 
@@ -374,8 +389,9 @@ def build_year_figure(result_df: pd.DataFrame) -> go.Figure:
             y=monthly["grid_import_kwh"],
             name="Netzbezug",
             marker_color="#2563eb",
+            legend="legend",
         ),
-        row=2,
+        row=3,
         col=1,
     )
     fig.add_trace(
@@ -384,13 +400,14 @@ def build_year_figure(result_df: pd.DataFrame) -> go.Figure:
             y=monthly["grid_export_kwh"],
             name="Netzeinspeisung",
             marker_color="#f59e0b",
+            legend="legend",
         ),
-        row=2,
+        row=3,
         col=1,
     )
 
     fig.update_layout(
-        height=620,
+        height=900,
         template="plotly_white",
         paper_bgcolor="#f8fafc",
         plot_bgcolor="#ffffff",
@@ -398,10 +415,17 @@ def build_year_figure(result_df: pd.DataFrame) -> go.Figure:
         hovermode="x unified",
         font=dict(family="Inter, sans-serif", size=12),
         margin=dict(t=70, b=40),
+        legend=dict(
+            yanchor="top",
+            y=0.28,
+            xanchor="left",
+            x=0.01,
+        ),
     )
 
     fig.update_yaxes(title_text="EUR", row=1, col=1)
-    fig.update_yaxes(title_text="kWh", row=2, col=1)
+    fig.update_yaxes(title_text="EUR", row=2, col=1)
+    fig.update_yaxes(title_text="kWh", row=3, col=1)
 
     return fig
 
@@ -959,12 +983,6 @@ def run_dashboard(
                                                    "marginTop": "14px",
                                                    "padding": "24px"},
                                             children=[
-                                                html.H3(
-                                                    "Gesamtsimulation",
-                                                    style={
-                                                        "marginTop": "0",
-                                                        "color": COLOR["text"],
-                                                    }),
                                                 html.Div(
                                                     style={"display": "flex", "gap": "10px", "alignItems": "center",
                                                            "flexWrap": "wrap", "marginBottom": "12px"},
