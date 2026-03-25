@@ -218,18 +218,12 @@ class Bess:
         grid_export_kwh = float(self.lp_result["p_sell"].sum() * delta_t)
         total_load_kwh = float(self.net_load_kw.clip(lower=0.0).sum() * delta_t)
 
-        if total_load_kwh > 0:
-            autarky = max(0.0, min(1.0, 1.0 - grid_import_kwh / total_load_kwh))
-        else:
-            autarky = 1.0
-
         return {
             "date": pd.Timestamp(act_day).normalize().date(),
             "profit_eur": objective_value,
             "grid_import_kwh": grid_import_kwh,
             "grid_export_kwh": grid_export_kwh,
             "total_load_kwh": total_load_kwh,
-            "autarky_percent": autarky * 100.0,
         }
 
     def update_battery_params(

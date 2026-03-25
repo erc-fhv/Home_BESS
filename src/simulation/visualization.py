@@ -968,7 +968,7 @@ def run_dashboard(
                                                 html.P(
                                                     "Hier wird die Jahresoptimierung "
                                                     "dargestellt: kumulierter Gewinn, "
-                                                    "Autarkiegrad, Netzbezug und "
+                                                    "Netzbezug und "
                                                     "-einspeisung pro Monat.",
                                                     style={
                                                         "color": COLOR["text_light"],
@@ -1318,12 +1318,10 @@ def run_dashboard(
             result_df = result_df.set_index("date").sort_index()
 
         year_profit = float(result_df["profit_eur"].sum()) if not result_df.empty else 0.0
-        autarky = float(result_df["autarky_percent"].mean()) if not result_df.empty else 0.0
         import_kwh = float(result_df["grid_import_kwh"].sum()) if not result_df.empty else 0.0
         export_kwh = float(result_df["grid_export_kwh"].sum()) if not result_df.empty else 0.0
         summary = (
             f"Jahresgewinn: {year_profit:.2f} EUR | "
-            f"Mittlere Autarkie: {autarky:.1f}% | "
             f"Netzbezug: {import_kwh:.1f} kWh | "
             f"Einspeisung: {export_kwh:.1f} kWh"
         )
