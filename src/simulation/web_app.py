@@ -942,7 +942,7 @@ def run_dashboard(
                                     ],
                                 ),
 
-                                # ── Tab 2: Jahressimulation ──────────
+                                # ── Tab 2: Gesamtsimulation ──────────
                                 dcc.Tab(
                                     label="Gesamtsimulation",
                                     value="tab-year",
@@ -960,19 +960,10 @@ def run_dashboard(
                                                    "padding": "24px"},
                                             children=[
                                                 html.H3(
-                                                    "Jahressimulation",
+                                                    "Gesamtsimulation",
                                                     style={
                                                         "marginTop": "0",
                                                         "color": COLOR["text"],
-                                                    }),
-                                                html.P(
-                                                    "Hier wird die Jahresoptimierung "
-                                                    "dargestellt: kumulierter Gewinn, "
-                                                    "Netzbezug und "
-                                                    "-einspeisung pro Monat.",
-                                                    style={
-                                                        "color": COLOR["text_light"],
-                                                        "marginBottom": "16px",
                                                     }),
                                                 html.Div(
                                                     style={"display": "flex", "gap": "10px", "alignItems": "center",

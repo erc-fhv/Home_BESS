@@ -133,6 +133,7 @@ class Bess:
             end=act_day + pd.Timedelta(days=1),
             freq='15min',
             tz="Europe/Vienna",
+            inclusive="left",
             )
         self.act_prices_epex = self.prices_epex.loc[act_range]
 
@@ -285,6 +286,6 @@ class Bess:
         self.prices_epex = self.prices_epex.resample('15min').ffill()
 
 if __name__ == "__main__":
-    from simulation.visualization import run_dashboard
+    from simulation.web_app import run_dashboard
     bess = Bess()
     run_dashboard(bess)
