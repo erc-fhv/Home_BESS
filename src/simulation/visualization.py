@@ -1,11 +1,14 @@
 import base64
 from io import StringIO
+import threading
 
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pulp
-from dash import Dash, dcc, html, Input, Output, callback_context, State
+from dash import Dash, dcc, html, Input, Output, callback_context, State, no_update
+from dash.exceptions import PreventUpdate
+from flask_socketio import SocketIO
 
 from simulation.bess_simulation import Bess
 
@@ -49,6 +52,90 @@ BTN = {
     "fontSize": "14px",
     "color": COLOR["text"],
 }
+
+
+# module-level SocketIO instance, initialised in run_dashboard()
+_socketio: SocketIO | None = None
+
+
+def _run_year_sim_job(
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+    params: dict,
+    df_energy_snapshot: pd.DataFrame,
+) -> None:
+    rows: list[dict] = []
+    total_days = 0
+    try:
+        worker_bess = Bess()
+        worker_bess.df_energy = df_energy_snapshot.copy()
+        worker_bess.update_battery_params(
+            capacity_kwh=params.get("battery_capacity", 30.72),
+            max_charge_kw=params.get("battery_max_charge", 8.0),
+            max_discharge_kw=params.get("battery_max_discharge", 8.0),
+            soc_min_percent=params.get("battery_soc_min", 10.0),
+            soc_final_percent=params.get("battery_soc_final", 50.0),
+            eta_charge=params.get("battery_eta_charge", 0.936),
+            eta_discharge=params.get("battery_eta_discharge", 0.936),
+        )
+
+        def _on_progress(done_days: int, total_days_: int, act_day: pd.Timestamp, day_metrics: dict) -> None:
+            nonlocal total_days
+            total_days = total_days_
+            safe_metrics = dict(day_metrics)
+            if "date" in safe_metrics and safe_metrics["date"] is not None:
+                safe_metrics["date"] = str(safe_metrics["date"])
+            rows.append(safe_metrics)
+            progress = int(round(100.0 * done_days / total_days_)) if total_days_ > 0 else 100
+            state = {
+                "status": "running",
+                "progress": progress,
+                "completed_days": done_days,
+                "total_days": total_days_,
+                "last_day": str(pd.Timestamp(act_day).date()),
+                "error": None,
+            }
+            if _socketio is not None:
+                _socketio.emit("sim_progress", state)
+
+        worker_bess.run_total_simulation(
+            start_day=start_ts,
+            end_day=end_ts,
+            use_dynamic_prices=params.get("use_dynamic_prices", True),
+            epex_offset_buy=params.get("epex_offset_buy", 0.0),
+            epex_offset_sell=params.get("epex_offset_sell", 0.0),
+            grid_fee=params.get("grid_fee", 0.0),
+            vat=params.get("vat", 0.0),
+            fix_price_buy=params.get("fix_price_buy", 0.0),
+            fix_price_sell=params.get("fix_price_sell", 0.0),
+            verbose=False,
+            progress_callback=_on_progress,
+        )
+
+        done_state = {
+            "status": "done",
+            "progress": 100,
+            "completed_days": total_days,
+            "total_days": total_days,
+            "last_day": rows[-1]["date"] if rows else None,
+            "rows": rows,
+            "error": None,
+        }
+        if _socketio is not None:
+            _socketio.emit("sim_progress", done_state)
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        error_state = {
+            "status": "error",
+            "progress": 0,
+            "completed_days": len(rows),
+            "total_days": total_days,
+            "last_day": rows[-1]["date"] if rows else None,
+            "rows": rows,
+            "error": str(exc),
+        }
+        if _socketio is not None:
+            _socketio.emit("sim_progress", error_state)
 
 
 def build_figure(bess: Bess) -> go.Figure:
@@ -233,6 +320,92 @@ def build_figure(bess: Bess) -> go.Figure:
     return fig
 
 
+def build_year_figure(result_df: pd.DataFrame) -> go.Figure:
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=False,
+        vertical_spacing=0.14,
+        subplot_titles=["Kumulierter Gewinn", "Monatliche Energiefluesse"],
+    )
+
+    if result_df.empty:
+        fig.update_layout(
+            height=620,
+            template="plotly_white",
+            paper_bgcolor="#f8fafc",
+            plot_bgcolor="#ffffff",
+            annotations=[dict(
+                text="Noch keine Ergebnisse vorhanden",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=18, color=COLOR["text_light"]),
+            )],
+        )
+        return fig
+
+    df = result_df.copy()
+    df = df.sort_index()
+    df["cum_profit_eur"] = df["profit_eur"].cumsum()
+
+    monthly = df.resample("MS").agg({
+        "grid_import_kwh": "sum",
+        "grid_export_kwh": "sum",
+    })
+
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df["cum_profit_eur"],
+            mode="lines",
+            name="Kumulierter Gewinn",
+            line=dict(color="#0f766e", width=3),
+        ),
+        row=1,
+        col=1,
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x=monthly.index,
+            y=monthly["grid_import_kwh"],
+            name="Netzbezug",
+            marker_color="#2563eb",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=monthly.index,
+            y=monthly["grid_export_kwh"],
+            name="Netzeinspeisung",
+            marker_color="#f59e0b",
+        ),
+        row=2,
+        col=1,
+    )
+
+    fig.update_layout(
+        height=620,
+        template="plotly_white",
+        paper_bgcolor="#f8fafc",
+        plot_bgcolor="#ffffff",
+        barmode="group",
+        hovermode="x unified",
+        font=dict(family="Inter, sans-serif", size=12),
+        margin=dict(t=70, b=40),
+    )
+
+    fig.update_yaxes(title_text="EUR", row=1, col=1)
+    fig.update_yaxes(title_text="kWh", row=2, col=1)
+
+    return fig
+
+
 def parse_csv(contents: str) -> pd.DataFrame:
     """Parst hochgeladene CSV-Dateien.
 
@@ -250,7 +423,6 @@ def parse_csv(contents: str) -> pd.DataFrame:
         decoded = raw.decode("latin-1")
 
     lines = decoded.strip().splitlines()
-    first_line = lines[0].strip()
 
     # VKW-Format: erste Zeile beginnt nicht mit typischen CSV-Headern
     # und enthält Semikolons in den Datenzeilen
@@ -289,9 +461,18 @@ def run_dashboard(
     port: int = 8051,
 ) -> None:
 
+    global _socketio
+
     print(f"Dash app running on http://127.0.0.1:{port}")
 
-    app = Dash(__name__, title="FHV FZE - Lastmanagement Simulation")
+    app = Dash(
+        __name__,
+        title="FHV FZE - Lastmanagement Simulation",
+        external_scripts=[
+            "https://cdn.socket.io/4.7.5/socket.io.min.js",
+        ],
+    )
+    _socketio = SocketIO(app.server, async_mode="threading", cors_allowed_origins="*")
 
     # Verfügbare Tage aus dem aktuellen Datensatz
     _first_date = bess.df_energy.index.min().normalize()
@@ -302,6 +483,7 @@ def run_dashboard(
         style={"backgroundColor": COLOR["bg"], "minHeight": "100vh",
                 "fontFamily": "Inter, system-ui, -apple-system, sans-serif"},
         children=[
+            dcc.Store(id="ws-sim-progress"),
             # ── Header ───────────────────────────────────────────────────
             html.Div(
                 style={"backgroundColor": COLOR["header"],
@@ -403,6 +585,60 @@ def run_dashboard(
                                             multiple=False,
                                         ),
                                     ],
+                                ),
+                            ]),
+
+                            # Card: Steuerung
+                            html.Div(style=CARD, children=[
+                                html.Div("Steuerung",
+                                         style=CARD_TITLE),
+                                dcc.RadioItems(
+                                    id="control-algorithm",
+                                    options=[
+                                        {"label": " PV-\u00dcberschussladen",
+                                         "value": "pv-ueberschussladen",
+                                         "disabled": False},
+                                        {"label": " Mathematische Optimierung (MILP)",
+                                         "value": "model-predictive-control"},
+                                    ],
+                                    value="model-predictive-control",
+                                    labelStyle={
+                                        "display": "block",
+                                        "marginBottom": "6px",
+                                        "fontSize": "14px",
+                                        "cursor": "pointer"},
+                                ),
+                                html.Hr(style={
+                                    "border": "none",
+                                    "borderTop": f"1px solid {COLOR['border']}",
+                                    "margin": "12px 0"}),
+                                dcc.Checklist(
+                                    id="allow-feed-in",
+                                    options=[{
+                                        "label": " Batterie-Einspeisung verbieten",
+                                        "value": "yes",
+                                    }],
+                                    value=["no"],
+                                    labelStyle={
+                                        "fontSize": "14px",
+                                        "cursor": "pointer"},
+                                ),
+                                dcc.RadioItems(
+                                    id="opt-objective",
+                                    options=[
+                                        {"label": " Profit maximieren",
+                                         "value": "profit"},
+                                        {"label": " Autarkie maximieren",
+                                         "value": "autarky"},
+                                        {"label": " Netzspitzen vermeiden",
+                                         "value": "peak_shaving"},
+                                    ],
+                                    value="profit",
+                                    labelStyle={
+                                        "display": "block",
+                                        "marginBottom": "6px",
+                                        "fontSize": "14px",
+                                        "cursor": "pointer"},
                                 ),
                             ]),
 
@@ -535,57 +771,113 @@ def run_dashboard(
                                 ),
                             ]),
 
-                            # Card: Steuerung
+                            # Card: Batterie-Einstellungen
                             html.Div(style=CARD, children=[
-                                html.Div("Steuerung",
+                                html.Div("Batterie-Einstellungen",
                                          style=CARD_TITLE),
-                                dcc.RadioItems(
-                                    id="control-algorithm",
-                                    options=[
-                                        {"label": " PV-\u00dcberschussladen",
-                                         "value": "pv-ueberschussladen",
-                                         "disabled": False},
-                                        {"label": " Model Predictive Control",
-                                         "value": "model-predictive-control"},
-                                    ],
-                                    value="model-predictive-control",
-                                    labelStyle={
-                                        "display": "block",
-                                        "marginBottom": "6px",
-                                        "fontSize": "14px",
-                                        "cursor": "pointer"},
+                                html.Div("Kapazität [kWh]",
+                                         style={"fontSize": "12px",
+                                                "color": COLOR["text_light"],
+                                                "marginBottom": "3px"}),
+                                dcc.Input(
+                                    id="battery-capacity",
+                                    type="number",
+                                    value=30.72, step=0.01,
+                                    style={"width": "100%",
+                                           "padding": "6px 10px",
+                                           "borderRadius": "6px",
+                                           "border": f"1px solid {COLOR['border']}",
+                                           "fontSize": "13px",
+                                           "marginBottom": "8px"},
                                 ),
-                                html.Hr(style={
-                                    "border": "none",
-                                    "borderTop": f"1px solid {COLOR['border']}",
-                                    "margin": "12px 0"}),
-                                dcc.Checklist(
-                                    id="allow-feed-in",
-                                    options=[{
-                                        "label": " Batterie-Einspeisung verbieten",
-                                        "value": "yes",
-                                    }],
-                                    value=["no"],
-                                    labelStyle={
-                                        "fontSize": "14px",
-                                        "cursor": "pointer"},
+                                html.Div("Max. Ladeleistung [kW]",
+                                         style={"fontSize": "12px",
+                                                "color": COLOR["text_light"],
+                                                "marginBottom": "3px"}),
+                                dcc.Input(
+                                    id="battery-max-charge",
+                                    type="number",
+                                    value=8.0, step=0.1,
+                                    style={"width": "100%",
+                                           "padding": "6px 10px",
+                                           "borderRadius": "6px",
+                                           "border": f"1px solid {COLOR['border']}",
+                                           "fontSize": "13px",
+                                           "marginBottom": "8px"},
                                 ),
-                                dcc.RadioItems(
-                                    id="opt-objective",
-                                    options=[
-                                        {"label": " Profit maximieren",
-                                         "value": "profit"},
-                                        {"label": " Autarkie maximieren",
-                                         "value": "autarky"},
-                                        {"label": " Netzspitzen vermeiden",
-                                         "value": "peak_shaving"},
-                                    ],
-                                    value="profit",
-                                    labelStyle={
-                                        "display": "block",
-                                        "marginBottom": "6px",
-                                        "fontSize": "14px",
-                                        "cursor": "pointer"},
+                                html.Div("Max. Entladeleistung [kW]",
+                                         style={"fontSize": "12px",
+                                                "color": COLOR["text_light"],
+                                                "marginBottom": "3px"}),
+                                dcc.Input(
+                                    id="battery-max-discharge",
+                                    type="number",
+                                    value=8.0, step=0.1,
+                                    style={"width": "100%",
+                                           "padding": "6px 10px",
+                                           "borderRadius": "6px",
+                                           "border": f"1px solid {COLOR['border']}",
+                                           "fontSize": "13px",
+                                           "marginBottom": "8px"},
+                                ),
+                                html.Div("Min. SOC [%]",
+                                         style={"fontSize": "12px",
+                                                "color": COLOR["text_light"],
+                                                "marginBottom": "3px"}),
+                                dcc.Input(
+                                    id="battery-soc-min",
+                                    type="number",
+                                    value=10.0, step=1.0,
+                                    style={"width": "100%",
+                                           "padding": "6px 10px",
+                                           "borderRadius": "6px",
+                                           "border": f"1px solid {COLOR['border']}",
+                                           "fontSize": "13px",
+                                           "marginBottom": "8px"},
+                                ),
+                                html.Div("Ziel-SOC Ende [%]",
+                                         style={"fontSize": "12px",
+                                                "color": COLOR["text_light"],
+                                                "marginBottom": "3px"}),
+                                dcc.Input(
+                                    id="battery-soc-final",
+                                    type="number",
+                                    value=50.0, step=1.0,
+                                    style={"width": "100%",
+                                           "padding": "6px 10px",
+                                           "borderRadius": "6px",
+                                           "border": f"1px solid {COLOR['border']}",
+                                           "fontSize": "13px",
+                                           "marginBottom": "8px"},
+                                ),
+                                html.Div("Lade-Wirkungsgrad",
+                                         style={"fontSize": "12px",
+                                                "color": COLOR["text_light"],
+                                                "marginBottom": "3px"}),
+                                dcc.Input(
+                                    id="battery-eta-charge",
+                                    type="number",
+                                    value=0.936, step=0.001, min=0.5, max=1.0,
+                                    style={"width": "100%",
+                                           "padding": "6px 10px",
+                                           "borderRadius": "6px",
+                                           "border": f"1px solid {COLOR['border']}",
+                                           "fontSize": "13px",
+                                           "marginBottom": "8px"},
+                                ),
+                                html.Div("Entlade-Wirkungsgrad",
+                                         style={"fontSize": "12px",
+                                                "color": COLOR["text_light"],
+                                                "marginBottom": "3px"}),
+                                dcc.Input(
+                                    id="battery-eta-discharge",
+                                    type="number",
+                                    value=0.936, step=0.001, min=0.5, max=1.0,
+                                    style={"width": "100%",
+                                           "padding": "6px 10px",
+                                           "borderRadius": "6px",
+                                           "border": f"1px solid {COLOR['border']}",
+                                           "fontSize": "13px"},
                                 ),
                             ]),
                         ],
@@ -682,25 +974,49 @@ def run_dashboard(
                                                         "color": COLOR["text_light"],
                                                         "marginBottom": "16px",
                                                     }),
+                                                html.Div(
+                                                    style={"display": "flex", "gap": "10px", "alignItems": "center",
+                                                           "flexWrap": "wrap", "marginBottom": "12px"},
+                                                    children=[
+                                                        dcc.DatePickerRange(
+                                                            id="year-range-picker",
+                                                            min_date_allowed=_first_date.date(),
+                                                            max_date_allowed=_last_date.date(),
+                                                            start_date=_first_date.date(),
+                                                            end_date=_last_date.date(),
+                                                            display_format="DD.MM.YYYY",
+                                                        ),
+                                                        html.Button(
+                                                            "Starte Gesamtsimulation",
+                                                            id="start-year-sim",
+                                                            n_clicks=0,
+                                                            style={**BTN, "backgroundColor": COLOR["accent"], "color": "#fff"},
+                                                        ),
+                                                    ],
+                                                ),
+                                                html.Progress(
+                                                    id="year-progress",
+                                                    value="0",
+                                                    max=100,
+                                                    style={"width": "100%", "height": "16px", "marginBottom": "6px"},
+                                                ),
+                                                html.Div(
+                                                    "Bereit.",
+                                                    id="year-progress-text",
+                                                    style={"fontSize": "13px", "color": COLOR["text_light"], "marginBottom": "14px"},
+                                                ),
+                                                html.Div(
+                                                    id="year-summary",
+                                                    style={
+                                                        "fontSize": "14px",
+                                                        "fontWeight": "600",
+                                                        "color": COLOR["text"],
+                                                        "marginBottom": "12px",
+                                                    },
+                                                ),
                                                 dcc.Graph(
                                                     id="year-graph",
-                                                    figure=go.Figure().update_layout(
-                                                        height=600,
-                                                        template="plotly_white",
-                                                        font=dict(
-                                                            family="Inter, sans-serif",
-                                                            size=12),
-                                                        paper_bgcolor="#f8fafc",
-                                                        annotations=[dict(
-                                                            text="Noch nicht implementiert",
-                                                            xref="paper", yref="paper",
-                                                            x=0.5, y=0.5,
-                                                            showarrow=False,
-                                                            font=dict(
-                                                                size=20,
-                                                                color=COLOR["text_light"]),
-                                                        )],
-                                                    ),
+                                                    figure=build_year_figure(pd.DataFrame()),
                                                 ),
                                             ],
                                         ),
@@ -805,6 +1121,13 @@ def run_dashboard(
         Input("vat", "value"),
         Input("fix-price-buy", "value"),
         Input("fix-price-sell", "value"),
+        Input("battery-capacity", "value"),
+        Input("battery-max-charge", "value"),
+        Input("battery-max-discharge", "value"),
+        Input("battery-soc-min", "value"),
+        Input("battery-soc-final", "value"),
+        Input("battery-eta-charge", "value"),
+        Input("battery-eta-discharge", "value"),
         State("input-mode", "value"),
         prevent_initial_call=True,
     )
@@ -812,6 +1135,8 @@ def run_dashboard(
                      gen_contents, price_source, epex_offset_buy,
                      epex_offset_sell, grid_fee, vat,
                      fix_price_buy, fix_price_sell,
+                     battery_capacity, battery_max_charge, battery_max_discharge,
+                     battery_soc_min, battery_soc_final, battery_eta_charge, battery_eta_discharge,
                      input_mode):
 
         ctx = callback_context
@@ -839,6 +1164,17 @@ def run_dashboard(
         if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
             act_day = min_date if min_date.tzinfo else min_date.tz_localize("Europe/Vienna")
 
+        # Batterie-Parameter aktualisieren
+        bess.update_battery_params(
+            capacity_kwh=battery_capacity,
+            max_charge_kw=battery_max_charge,
+            max_discharge_kw=battery_max_discharge,
+            soc_min_percent=battery_soc_min,
+            soc_final_percent=battery_soc_final,
+            eta_charge=battery_eta_charge,
+            eta_discharge=battery_eta_discharge,
+        )
+
         bess.run(act_day=act_day,
                  use_dynamic_prices=(price_source == "epex"),
                  epex_offset_buy=(epex_offset_buy or 0) / 100.0,
@@ -850,7 +1186,185 @@ def run_dashboard(
                  verbose=False)
         return build_figure(bess), act_day.date(), min_date.date(), max_date.date()
 
-    app.run(debug=True, port=port)
+    # ── Start-Callback: Gesamtsimulation starten ────────────────────
+    @app.callback(
+        Output("year-progress", "value", allow_duplicate=True),
+        Output("year-progress-text", "children", allow_duplicate=True),
+        Output("year-summary", "children", allow_duplicate=True),
+        Output("year-graph", "figure", allow_duplicate=True),
+        Input("start-year-sim", "n_clicks"),
+        State("year-range-picker", "start_date"),
+        State("year-range-picker", "end_date"),
+        State("price-source", "value"),
+        State("epex-offset-buy", "value"),
+        State("epex-offset-sell", "value"),
+        State("grid-fee", "value"),
+        State("vat", "value"),
+        State("fix-price-buy", "value"),
+        State("fix-price-sell", "value"),
+        State("battery-capacity", "value"),
+        State("battery-max-charge", "value"),
+        State("battery-max-discharge", "value"),
+        State("battery-soc-min", "value"),
+        State("battery-soc-final", "value"),
+        State("battery-eta-charge", "value"),
+        State("battery-eta-discharge", "value"),
+        prevent_initial_call=True,
+    )
+    def start_total_simulation(
+        n_clicks,
+        start_date,
+        end_date,
+        price_source,
+        epex_offset_buy,
+        epex_offset_sell,
+        grid_fee,
+        vat,
+        fix_price_buy,
+        fix_price_sell,
+        battery_capacity,
+        battery_max_charge,
+        battery_max_discharge,
+        battery_soc_min,
+        battery_soc_final,
+        battery_eta_charge,
+        battery_eta_discharge,
+    ):
+        if not n_clicks or not start_date or not end_date:
+            raise PreventUpdate
+
+        start_ts = pd.Timestamp(start_date, tz="Europe/Vienna").normalize()
+        end_ts = pd.Timestamp(end_date, tz="Europe/Vienna").normalize()
+        if end_ts < start_ts:
+            start_ts, end_ts = end_ts, start_ts
+
+        days = pd.date_range(start=start_ts, end=end_ts, freq="1D", tz="Europe/Vienna")
+        params = {
+            "use_dynamic_prices": price_source == "epex",
+            "epex_offset_buy": (epex_offset_buy or 0) / 100.0,
+            "epex_offset_sell": (epex_offset_sell or 0) / 100.0,
+            "grid_fee": (grid_fee or 0) / 100.0,
+            "vat": (vat or 0) / 100.0,
+            "fix_price_buy": (fix_price_buy or 0) / 100.0,
+            "fix_price_sell": (fix_price_sell or 0) / 100.0,
+            "battery_capacity": battery_capacity or 30.72,
+            "battery_max_charge": battery_max_charge or 8.0,
+            "battery_max_discharge": battery_max_discharge or 8.0,
+            "battery_soc_min": battery_soc_min or 10.0,
+            "battery_soc_final": battery_soc_final or 50.0,
+            "battery_eta_charge": battery_eta_charge or 0.936,
+            "battery_eta_discharge": battery_eta_discharge or 0.936,
+        }
+
+        thread = threading.Thread(
+            target=_run_year_sim_job,
+            args=(start_ts, end_ts, params, bess.df_energy.copy()),
+            daemon=True,
+        )
+        thread.start()
+
+        return (
+            "0",
+            f"Starte Simulation fuer {len(days)} Tage...",
+            "",
+            no_update,
+        )
+
+    # ── Progress-Callback: WebSocket-Push → Store → UI ──────────────
+    @app.callback(
+        Output("year-progress", "value"),
+        Output("year-progress-text", "children"),
+        Output("year-summary", "children"),
+        Output("year-graph", "figure"),
+        Input("ws-sim-progress", "data"),
+        prevent_initial_call=True,
+    )
+    def on_sim_progress(data):
+        if not data:
+            raise PreventUpdate
+
+        status = data.get("status", "running")
+        completed_days = int(data.get("completed_days", 0))
+        total_days = int(data.get("total_days", 0))
+        progress = int(data.get("progress", 0))
+        rows = list(data.get("rows", []))
+        last_day = data.get("last_day")
+
+        if status == "error":
+            return (
+                str(progress),
+                f"Fehler bei Tag {completed_days}/{total_days}.",
+                f"Fehler: {data.get('error', 'Unbekannt')}",
+                no_update,
+            )
+
+        if status == "running":
+            progress_text = (
+                f"Tag {completed_days}/{total_days} gerechnet ({last_day})"
+                if completed_days > 0 and last_day
+                else f"Simulation laeuft... 0/{total_days}"
+            )
+            return (
+                str(progress),
+                progress_text,
+                no_update,
+                no_update,
+            )
+
+        # status == "done"
+        result_df = pd.DataFrame(rows)
+        if not result_df.empty:
+            result_df["date"] = pd.to_datetime(result_df["date"])
+            result_df = result_df.set_index("date").sort_index()
+
+        year_profit = float(result_df["profit_eur"].sum()) if not result_df.empty else 0.0
+        autarky = float(result_df["autarky_percent"].mean()) if not result_df.empty else 0.0
+        import_kwh = float(result_df["grid_import_kwh"].sum()) if not result_df.empty else 0.0
+        export_kwh = float(result_df["grid_export_kwh"].sum()) if not result_df.empty else 0.0
+        summary = (
+            f"Jahresgewinn: {year_profit:.2f} EUR | "
+            f"Mittlere Autarkie: {autarky:.1f}% | "
+            f"Netzbezug: {import_kwh:.1f} kWh | "
+            f"Einspeisung: {export_kwh:.1f} kWh"
+        )
+
+        return (
+            "100",
+            f"Abgeschlossen. {completed_days} Tage berechnet.",
+            summary,
+            build_year_figure(result_df),
+        )
+
+    # ── Client-side JS for socket.io → dcc.Store bridge ─────────────
+    app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+            <script>
+                document.addEventListener("DOMContentLoaded", function() {
+                    var socket = io();
+                    socket.on("sim_progress", function(data) {
+                        dash_clientside.set_props("ws-sim-progress", {data: data});
+                    });
+                });
+            </script>
+        </footer>
+    </body>
+</html>
+'''
+
+    _socketio.run(app.server, debug=True, use_reloader=False, port=port, allow_unsafe_werkzeug=True)
 
 
 if __name__ == "__main__":

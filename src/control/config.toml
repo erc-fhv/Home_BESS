@@ -1,5 +1,5 @@
 [mpc]
-interval_minutes = 15   # 15 * 60
+interval_minutes = 15
 
 [battery]
 max_charge_kw = 8.0         # max = 3*4kW

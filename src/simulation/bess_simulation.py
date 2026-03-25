@@ -1,74 +1,33 @@
 from pathlib import Path
+from typing import Callable
 import pulp
-import numpy as np
 import pandas as pd
 
 from interfaces.get_day_ahead_prices import DayAheadPrice
 
 
 class Bess:
-    def __init__(
-        self,
-        capacity_kwh: float = 5.12*6,
-        max_charge_kw: float = 4.0*3,
-        max_discharge_kw: float = 4.0*3,
-        soc_min: float = 0.1,
-        soc_max: float = 0.9,
-        eta_charge: float = np.sqrt(0.95) * 0.96,       # 95% BESS round-trip efficiency
-        eta_discharge: float = np.sqrt(0.95) * 0.96,    # times 96% inverter power factor
-        ) -> None:
+    def __init__(self) -> None:
 
-        self.capacity_kwh = capacity_kwh
-        self.max_charge_kw = max_charge_kw
-        self.max_discharge_kw = max_discharge_kw
-        self.soc_min_kwh = soc_min * capacity_kwh
-        self.soc_max_kwh = soc_max * capacity_kwh
-        self.eta_charge = eta_charge
-        self.eta_discharge = eta_discharge
-
+        self.capacity_kwh = None
+        self.max_charge_kw = None
+        self.max_discharge_kw = None
+        self.soc_min_kwh = None
+        self.soc_max_kwh = None
+        self.eta_charge = None
+        self.eta_discharge = None
         self.lp_result = {}
         self.price_sell = pd.Series()
         self.price_buy = pd.Series()
 
+        # Lade EPEX-Preise und Energieverbrauchsdaten
         self._load_epex_prices()
 
         # Energieverbrauchs- und Produktionsdaten einlesen
-        # todo: ebenfalls automatisch einlesen, falls nicht vorhanden.
         file_path = Path(__file__).parent / "data" / "example_household_without_battery.csv"
         self.df_energy = pd.read_csv(file_path, index_col=0)
         self.df_energy.index = pd.to_datetime(self.df_energy.index, utc=True)
         self.df_energy.index = self.df_energy.index.tz_convert("Europe/Vienna")
-
-    def _load_epex_prices(self) -> None:
-        """EPEX-Preise aus CSV laden und fehlende Daten via API nachladen."""
-        file_path = Path(__file__).parent / "data" / "epex_prices.csv"
-        now = pd.Timestamp.now(tz="Europe/Vienna").floor("1D")
-
-        if file_path.exists():
-            df_prices = pd.read_csv(file_path, index_col=0)
-            df_prices.index = pd.to_datetime(df_prices.index, utc=True)
-            df_prices.index = df_prices.index.tz_convert("Europe/Vienna")
-            last_ts = df_prices.index.max().floor("1D")
-
-            if last_ts < now:
-                new_prices = DayAheadPrice.get_epex_prices(
-                    country_code="AT",
-                    start_date=last_ts,
-                    end_date=now,
-                )
-                if not new_prices.empty:
-                    df_new = new_prices.to_frame(name="day_ahead_price_eur_kWh")
-                    df_prices = pd.concat([df_prices, df_new])
-                    df_prices = df_prices[
-                        ~df_prices.index.duplicated(keep="last")]
-                    df_prices.sort_index(inplace=True)
-                    df_prices.index.name = "timestamp"
-                    df_prices.to_csv(file_path)
-        else:
-            raise FileNotFoundError(f"EPEX price file '{file_path}' not found.")
-
-        self.prices_epex = df_prices["day_ahead_price_eur_kWh"]
-        self.prices_epex = self.prices_epex.resample('15min').ffill()
 
     def optimize_day(
         self,
@@ -82,6 +41,13 @@ class Bess:
         # Konsistenzcheck
         assert price_sell.index.equals(price_buy.index)
         assert price_buy.index.equals(net_load.index)
+        assert self.capacity_kwh is not None, "Battery capacity must be set."
+        assert self.max_charge_kw is not None, "Max charge power must be set."
+        assert self.max_discharge_kw is not None, "Max discharge power must be set."
+        assert self.soc_min_kwh is not None, "Minimum SOC must be set."
+        assert self.soc_max_kwh is not None, "Maximum SOC must be set."
+        assert self.eta_charge is not None, "Charging efficiency must be set."
+        assert self.eta_discharge is not None, "Discharging efficiency must be set."
 
         # Definiere Zeitindex und Parameter
         time_points = price_sell.index
@@ -189,6 +155,140 @@ class Bess:
             verbose=verbose,
         )
 
+    def run_total_simulation(
+        self,
+        start_day: pd.Timestamp,
+        end_day: pd.Timestamp,
+        use_dynamic_prices: bool,
+        epex_offset_buy: float,
+        epex_offset_sell: float,
+        grid_fee: float,
+        vat: float,
+        fix_price_buy: float,
+        fix_price_sell: float,
+        verbose: bool = False,
+        progress_callback: Callable | None = None,
+    ) -> pd.DataFrame:
+        """Führt die Simulation für jeden Tag in [start_day, end_day] aus."""
+
+        start_ts = start_day.normalize()
+        end_ts = end_day.normalize()
+        if end_ts < start_ts:
+            raise ValueError("end_day must be greater than or equal to start_day")
+        all_days = pd.date_range(start=start_ts, end=end_ts, freq="1D", tz="Europe/Vienna")
+        rows = []
+
+        for idx, act_day in enumerate(all_days):
+
+            self.run(
+                act_day=act_day,
+                use_dynamic_prices=use_dynamic_prices,
+                epex_offset_buy=epex_offset_buy,
+                epex_offset_sell=epex_offset_sell,
+                grid_fee=grid_fee,
+                vat=vat,
+                fix_price_buy=fix_price_buy,
+                fix_price_sell=fix_price_sell,
+                verbose=verbose,
+            )
+            day_metrics = self.get_current_day_metrics(act_day=act_day)
+            rows.append(day_metrics)
+
+            if progress_callback is not None:
+                progress_callback(idx+1, len(all_days), act_day, day_metrics)
+
+        result_df = pd.DataFrame(rows)
+        assert not result_df.empty, "Simulation returned no results."
+        result_df["date"] = pd.to_datetime(result_df["date"])
+        result_df = result_df.set_index("date").sort_index()
+
+        return result_df
+
+    def get_current_day_metrics(self, act_day: pd.Timestamp) -> dict:
+        """Berechnet Tageskennzahlen aus den letzten Optimierungsergebnissen."""
+
+        if self.net_load_kw.empty:
+            raise ValueError("No simulation results available. Run `run()` first.")
+
+        # Energie aus Leistung mit der im Datensatz enthaltenen Schrittweite berechnen.
+        delta_t = (self.net_load_kw.index[1] - self.net_load_kw.index[0]).total_seconds() / 3600.0
+
+        objective_value = float(pulp.value(self.pulp_model.objective) or 0.0)
+        grid_import_kwh = float(self.lp_result["p_buy"].sum() * delta_t)
+        grid_export_kwh = float(self.lp_result["p_sell"].sum() * delta_t)
+        total_load_kwh = float(self.net_load_kw.clip(lower=0.0).sum() * delta_t)
+
+        if total_load_kwh > 0:
+            autarky = max(0.0, min(1.0, 1.0 - grid_import_kwh / total_load_kwh))
+        else:
+            autarky = 1.0
+
+        return {
+            "date": pd.Timestamp(act_day).normalize().date(),
+            "profit_eur": objective_value,
+            "grid_import_kwh": grid_import_kwh,
+            "grid_export_kwh": grid_export_kwh,
+            "total_load_kwh": total_load_kwh,
+            "autarky_percent": autarky * 100.0,
+        }
+
+    def update_battery_params(
+        self,
+        capacity_kwh: float | None = None,
+        max_charge_kw: float | None = None,
+        max_discharge_kw: float | None = None,
+        soc_min_percent: float | None = None,
+        soc_final_percent: float | None = None,
+        eta_charge: float | None = None,
+        eta_discharge: float | None = None,
+    ) -> None:
+        """Aktualisiert die Batterie-Parameter."""
+
+        if capacity_kwh is not None:
+            self.capacity_kwh = capacity_kwh
+        if max_charge_kw is not None:
+            self.max_charge_kw = max_charge_kw
+        if max_discharge_kw is not None:
+            self.max_discharge_kw = max_discharge_kw
+        if soc_min_percent is not None:
+            self.soc_min_kwh = (soc_min_percent / 100.0) * self.capacity_kwh
+        if soc_final_percent is not None:
+            self.soc_max_kwh = (soc_final_percent / 100.0) * self.capacity_kwh
+        if eta_charge is not None:
+            self.eta_charge = eta_charge
+        if eta_discharge is not None:
+            self.eta_discharge = eta_discharge
+
+    def _load_epex_prices(self) -> None:
+        """EPEX-Preise aus CSV laden und fehlende Daten via API nachladen."""
+        file_path = Path(__file__).parent / "data" / "epex_prices.csv"
+        now = pd.Timestamp.now(tz="Europe/Vienna").floor("1D")
+
+        if file_path.exists():
+            df_prices = pd.read_csv(file_path, index_col=0)
+            df_prices.index = pd.to_datetime(df_prices.index, utc=True)
+            df_prices.index = df_prices.index.tz_convert("Europe/Vienna")
+            last_ts = df_prices.index.max().floor("1D")
+
+            if last_ts < now:
+                new_prices = DayAheadPrice.get_epex_prices(
+                    country_code="AT",
+                    start_date=last_ts,
+                    end_date=now,
+                )
+                if not new_prices.empty:
+                    df_new = new_prices.to_frame(name="day_ahead_price_eur_kWh")
+                    df_prices = pd.concat([df_prices, df_new])
+                    df_prices = df_prices[
+                        ~df_prices.index.duplicated(keep="last")]
+                    df_prices.sort_index(inplace=True)
+                    df_prices.index.name = "timestamp"
+                    df_prices.to_csv(file_path)
+        else:
+            raise FileNotFoundError(f"EPEX price file '{file_path}' not found.")
+
+        self.prices_epex = df_prices["day_ahead_price_eur_kWh"]
+        self.prices_epex = self.prices_epex.resample('15min').ffill()
 
 if __name__ == "__main__":
     from simulation.visualization import run_dashboard
