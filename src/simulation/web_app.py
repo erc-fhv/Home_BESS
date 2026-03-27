@@ -157,8 +157,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.act_prices_epex.index,
-            y=bess.act_prices_epex.values,
+            x=bess.act_prices_epex_eur_kwh.index,
+            y=bess.act_prices_epex_eur_kwh.values,
             line_shape="hv",
             name="Epex Preis",
             legendgroup="g1", legend="legend",
@@ -168,8 +168,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.act_prices_epex.index,
-            y=bess.price_sell.values,
+            x=bess.act_prices_epex_eur_kwh.index,
+            y=bess.price_sell_eur_kwh.values,
             line_shape="hv",
             name="Einspeisepreis",
             legendgroup="g1", legend="legend",
@@ -179,8 +179,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.act_prices_epex.index,
-            y=bess.price_buy.values,
+            x=bess.act_prices_epex_eur_kwh.index,
+            y=bess.price_buy_eur_kwh.values,
             line_shape="hv",
             name="Bezugspreise",
             legendgroup="g1", legend="legend",
@@ -1195,12 +1195,12 @@ def run_dashboard(
 
         bess.run(act_day=act_day,
                  use_dynamic_prices=(price_source == "epex"),
-                 epex_offset_buy=epex_offset_buy_eur,
-                 epex_offset_sell=epex_offset_sell_eur,
-                 grid_fee=grid_fee_eur,
+                 epex_offset_buy_eur_kwh=epex_offset_buy_eur,
+                 epex_offset_sell_eur_kwh=epex_offset_sell_eur,
+                 grid_fee_eur_kwh=grid_fee_eur,
                  vat=vat_fraction,
-                 fix_price_buy=fix_price_buy_eur,
-                 fix_price_sell=fix_price_sell_eur,
+                 fix_price_buy_eur_kwh=fix_price_buy_eur,
+                 fix_price_sell_eur_kwh=fix_price_sell_eur,
                  verbose=False)
         return build_figure(bess), act_day.date(), min_date.date(), max_date.date()
 

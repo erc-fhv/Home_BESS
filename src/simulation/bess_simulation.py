@@ -16,9 +16,11 @@ class Bess:
         self.soc_max_kwh = None
         self.eta_charge = None
         self.eta_discharge = None
+        self.net_load_kw = None
+        self.act_prices_epex_eur_kwh = None
         self.lp_result = {}
-        self.price_sell = pd.Series()
-        self.price_buy = pd.Series()
+        self.price_sell_eur_kwh = pd.Series()
+        self.price_buy_eur_kwh = pd.Series()
 
         # Lade EPEX-Preise und Energieverbrauchsdaten
         self._load_epex_prices()
@@ -31,16 +33,16 @@ class Bess:
 
     def optimize(
         self,
-        price_sell: pd.Series,    # ct/kWh
-        price_buy: pd.Series,     # ct/kWh
-        net_load: pd.Series,      # kW
-        soc0: float,              # kWh
+        price_sell_eur_kwh: pd.Series,
+        price_buy_eur_kwh: pd.Series,
+        net_load_kw: pd.Series,
+        soc0_kwh: float,
         verbose: bool = True,
         ) -> tuple:
 
         # Konsistenzcheck
-        assert price_sell.index.equals(price_buy.index)
-        assert price_buy.index.equals(net_load.index)
+        assert price_sell_eur_kwh.index.equals(price_buy_eur_kwh.index)
+        assert price_buy_eur_kwh.index.equals(net_load_kw.index)
         assert self.capacity_kwh is not None, "Battery capacity must be set."
         assert self.max_charge_kw is not None, "Max charge power must be set."
         assert self.max_discharge_kw is not None, "Max discharge power must be set."
@@ -50,7 +52,7 @@ class Bess:
         assert self.eta_discharge is not None, "Discharging efficiency must be set."
 
         # Definiere Zeitindex und Parameter
-        time_points = price_sell.index
+        time_points = price_sell_eur_kwh.index
         T = range(len(time_points))
         time_periods = time_points[:-1]
         P = range(len(time_periods))
@@ -70,8 +72,8 @@ class Bess:
         y = pulp.LpVariable.dicts("y", P, 0, 1, cat="Binary")   # Lade-/Entlade-Exklusivität
 
         # Anfangs- und End-SOC festsetzen
-        model += soc[0] == soc0
-        model += soc[T[-1]] == soc0
+        model += soc[0] == soc0_kwh
+        model += soc[T[-1]] == soc0_kwh
 
         # Füge SOC Nebenbedingungen hinzu
         for t in range(1, len(T)):
@@ -86,15 +88,15 @@ class Bess:
         # Leistungsbilanz
         for p in P:
             model += (
-                p_buy[p] + p_dis[p] - net_load.iloc[p] - p_sell[p] - p_ch[p]
+                p_buy[p] + p_dis[p] - net_load_kw.iloc[p] - p_sell[p] - p_ch[p]
                 ==
                 0.0
             )
 
         # Zielfunktion: Erlös – Kosten
         model += pulp.lpSum(
-            (price_sell.iloc[p] * p_sell[p]
-            - price_buy.iloc[p] * p_buy[p]) * delta_t
+            (price_sell_eur_kwh.iloc[p] * p_sell[p]
+            - price_buy_eur_kwh.iloc[p] * p_buy[p]) * delta_t
             for p in P
         )
 
@@ -119,12 +121,12 @@ class Bess:
         self,
         act_day: pd.Timestamp,
         use_dynamic_prices: bool,
-        epex_offset_buy: float,
-        epex_offset_sell: float,
-        grid_fee: float,
+        epex_offset_buy_eur_kwh: float,
+        epex_offset_sell_eur_kwh: float,
+        grid_fee_eur_kwh: float,
         vat: float,
-        fix_price_buy: float,
-        fix_price_sell: float,
+        fix_price_buy_eur_kwh: float,
+        fix_price_sell_eur_kwh: float,
         verbose: bool = False,
         ) -> None:
 
@@ -135,25 +137,25 @@ class Bess:
             tz="Europe/Vienna",
             inclusive="left",
             )
-        act_prices_epex = self.prices_epex_eur_kWh.loc[act_range]
+        self.act_prices_epex_eur_kwh = self.prices_epex_eur_kWh.loc[act_range]
 
         if use_dynamic_prices:
-            # VKW dynamische Preise in EUR/kWh
-            self.price_sell = act_prices_epex - epex_offset_sell
-            self.price_buy  = (act_prices_epex + epex_offset_buy + grid_fee) * (1 + vat)
+            self.price_sell_eur_kwh = self.act_prices_epex_eur_kwh - epex_offset_sell_eur_kwh
+            self.price_buy_eur_kwh  = (self.act_prices_epex_eur_kwh + epex_offset_buy_eur_kwh \
+                + grid_fee_eur_kwh) * (1 + vat)
         else:
-            # fixe Preise in EUR/kWh
-            self.price_sell = pd.Series(fix_price_sell, index=act_prices_epex.index)
-            self.price_buy  = pd.Series((fix_price_buy + grid_fee) * (1 + vat),
-                index=act_prices_epex.index)
+            self.price_sell_eur_kwh = pd.Series(fix_price_sell_eur_kwh,
+                index=self.act_prices_epex_eur_kwh.index)
+            self.price_buy_eur_kwh  = pd.Series((fix_price_buy_eur_kwh + grid_fee_eur_kwh) \
+                * (1 + vat), index=self.act_prices_epex_eur_kwh.index)
 
         self.net_load_kw = self.df_energy.loc[act_range]["net_load_kw"]
 
         self.lp_result, self.pulp_model = self.optimize(
-            price_sell=self.price_sell,
-            price_buy=self.price_buy,
-            net_load=self.net_load_kw,
-            soc0=0.5 * self.capacity_kwh,
+            price_sell_eur_kwh=self.price_sell_eur_kwh,
+            price_buy_eur_kwh=self.price_buy_eur_kwh,
+            net_load_kw=self.net_load_kw,
+            soc0_kwh=0.5 * self.capacity_kwh,
             verbose=verbose,
         )
 
@@ -185,12 +187,12 @@ class Bess:
             self.run(
                 act_day=act_day,
                 use_dynamic_prices=use_dynamic_prices,
-                epex_offset_buy=epex_offset_buy,
-                epex_offset_sell=epex_offset_sell,
-                grid_fee=grid_fee,
+                epex_offset_buy_eur_kwh=epex_offset_buy,
+                epex_offset_sell_eur_kwh=epex_offset_sell,
+                grid_fee_eur_kwh=grid_fee,
                 vat=vat,
-                fix_price_buy=fix_price_buy,
-                fix_price_sell=fix_price_sell,
+                fix_price_buy_eur_kwh=fix_price_buy,
+                fix_price_sell_eur_kwh=fix_price_sell,
                 verbose=verbose,
             )
             day_metrics = self.get_current_day_metrics(act_day=act_day)
