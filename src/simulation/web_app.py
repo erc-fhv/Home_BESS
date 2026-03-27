@@ -70,7 +70,7 @@ def _run_year_sim_job(
     total_days = 0
     try:
         worker_bess = Bess()
-        worker_bess.df_energy = df_energy_snapshot.copy()
+        worker_bess.netload_kw = df_energy_snapshot.copy()
         worker_bess.update_battery_params(
             capacity_kwh=params.get("battery_capacity", 30.72),
             max_charge_kw=params.get("battery_max_charge", 8.0),
@@ -84,9 +84,21 @@ def _run_year_sim_job(
         def _on_progress(done_days: int, total_days_: int, act_day: pd.Timestamp, day_metrics: dict) -> None:
             nonlocal total_days
             total_days = total_days_
-            safe_metrics = dict(day_metrics)
+            # Compute energy totals from Series before discarding them
+            delta_t = 0.25  # 15-min intervals in hours
+            p_buy = day_metrics.get("p_buy_kw")
+            p_sell = day_metrics.get("p_sell_kw")
+            grid_import_kwh = float(p_buy.sum() * delta_t) if isinstance(p_buy, pd.Series) else 0.0
+            grid_export_kwh = float(p_sell.sum() * delta_t) if isinstance(p_sell, pd.Series) else 0.0
+            # Keep only JSON-serialisable (scalar) values
+            safe_metrics = {
+                k: v for k, v in day_metrics.items()
+                if not isinstance(v, (pd.Series, pd.DataFrame))
+            }
             if "date" in safe_metrics and safe_metrics["date"] is not None:
                 safe_metrics["date"] = str(safe_metrics["date"])
+            safe_metrics["grid_import_kwh"] = grid_import_kwh
+            safe_metrics["grid_export_kwh"] = grid_export_kwh
             rows.append(safe_metrics)
             progress = int(round(100.0 * done_days / total_days_)) if total_days_ > 0 else 100
             state = {
@@ -140,7 +152,7 @@ def _run_year_sim_job(
             _socketio.emit("sim_progress", error_state)
 
 
-def build_figure(bess: Bess) -> go.Figure:
+def build_figure(lp_results: dict) -> go.Figure:
     fig = make_subplots(
         rows=5,
         cols=1,
@@ -157,8 +169,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.act_prices_epex_eur_kwh.index,
-            y=bess.act_prices_epex_eur_kwh.values,
+            x=lp_results["act_prices_epex_eur_kwh"].index,
+            y=lp_results["act_prices_epex_eur_kwh"].values,
             line_shape="hv",
             name="Epex Preis",
             legendgroup="g1", legend="legend",
@@ -168,8 +180,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.act_prices_epex_eur_kwh.index,
-            y=bess.price_sell_eur_kwh.values,
+            x=lp_results["price_sell_eur_kwh"].index,
+            y=lp_results["price_sell_eur_kwh"].values,
             line_shape="hv",
             name="Einspeisepreis",
             legendgroup="g1", legend="legend",
@@ -179,8 +191,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.act_prices_epex_eur_kwh.index,
-            y=bess.price_buy_eur_kwh.values,
+            x=lp_results["price_buy_eur_kwh"].index,
+            y=lp_results["price_buy_eur_kwh"].values,
             line_shape="hv",
             name="Bezugspreise",
             legendgroup="g1", legend="legend",
@@ -190,8 +202,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.net_load_kw.index,
-            y=bess.net_load_kw.values,
+            x=lp_results["set_netload_kw"].index,
+            y=lp_results["set_netload_kw"].values,
             line_shape="hv",
             name="Residuallast",
             legendgroup="g2", legend="legend2",
@@ -199,7 +211,7 @@ def build_figure(bess: Bess) -> go.Figure:
         row=2, col=1,
     )
 
-    soc_percent = 100 * bess.lp_result["soc"] / bess.capacity_kwh
+    soc_percent = lp_results["soc_percent"]
     fig.add_trace(
         go.Scatter(
             x=soc_percent.index,
@@ -213,8 +225,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.lp_result["p_sell"].index,
-            y=bess.lp_result["p_sell"].values,
+            x=lp_results["p_sell_kw"].index,
+            y=lp_results["p_sell_kw"].values,
             line_shape="hv",
             name="Einspeisung",
             legendgroup="g4", legend="legend4",
@@ -224,8 +236,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.lp_result["p_buy"].index,
-            y=bess.lp_result["p_buy"].values,
+            x=lp_results["p_buy_kw"].index,
+            y=lp_results["p_buy_kw"].values,
             line_shape="hv",
             name="Bezug",
             legendgroup="g4", legend="legend4",
@@ -235,8 +247,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.lp_result["p_ch"].index,
-            y=bess.lp_result["p_ch"].values,
+            x=lp_results["p_ch_kw"].index,
+            y=lp_results["p_ch_kw"].values,
             line_shape="hv",
             name="Laden",
             legendgroup="g5", legend="legend5",
@@ -246,8 +258,8 @@ def build_figure(bess: Bess) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=bess.lp_result["p_dis"].index,
-            y=bess.lp_result["p_dis"].values,
+            x=lp_results["p_dis_kw"].index,
+            y=lp_results["p_dis_kw"].values,
             line_shape="hv",
             name="Entladen",
             legendgroup="g5", legend="legend5",
@@ -305,7 +317,7 @@ def build_figure(bess: Bess) -> go.Figure:
     fig.update_yaxes(title_text="Leistung [kW]", row=5, col=1)
 
     try:
-        objective_value = pulp.value(bess.pulp_model.objective)
+        objective_value = lp_results["profit_eur"]
         fig.add_annotation(
             x=1.0,
             y=1.02,
@@ -501,8 +513,9 @@ def run_dashboard(
     _socketio = SocketIO(app.server, async_mode="threading", cors_allowed_origins="*")
 
     # Verfügbare Tage aus dem aktuellen Datensatz
-    _first_date = bess.df_energy.index.min().normalize()
-    _last_date = bess.df_energy.index.max().normalize()
+    netload_kw = bess.get_netload_profile()
+    _first_date = netload_kw.index.min().normalize()
+    _last_date = netload_kw.index.max().normalize()
 
     # ── Layout ───────────────────────────────────────────────────────────
     app.layout = html.Div(
@@ -1160,15 +1173,15 @@ def run_dashboard(
                     df_load = parse_csv(load_contents)
                     df_gen = parse_csv(gen_contents)
                     net = df_load["value_kw"] - df_gen["value_kw"]
-                    bess.df_energy = pd.DataFrame(
-                        {"net_load_kw": net})
+                    bess.set_netload_profile(pd.DataFrame({"net_load_kw": net}))
             elif residual_contents:
                 df_res = parse_csv(residual_contents)
-                bess.df_energy = pd.DataFrame(
-                    {"net_load_kw": df_res["value_kw"]})
+                bess.set_netload_profile(pd.DataFrame(
+                    {"net_load_kw": df_res["value_kw"]}))
 
-        min_date = bess.df_energy.index.min().normalize()
-        max_date = bess.df_energy.index.max().normalize()
+        netload_profile = bess.get_netload_profile()
+        min_date = netload_profile.index.min().normalize()
+        max_date = netload_profile.index.max().normalize()
 
         act_day = pd.Timestamp(act_day, tz="Europe/Vienna")
         # Bei neuem Upload auf ersten verfuegbaren Tag springen
@@ -1193,7 +1206,7 @@ def run_dashboard(
         fix_price_buy_eur = (fix_price_buy_cent or 0) / 100.0
         fix_price_sell_eur = (fix_price_sell_cent or 0) / 100.0
 
-        bess.run(act_day=act_day,
+        lp_results = bess.run(act_day=act_day,
                  use_dynamic_prices=(price_source == "epex"),
                  epex_offset_buy_eur_kwh=epex_offset_buy_eur,
                  epex_offset_sell_eur_kwh=epex_offset_sell_eur,
@@ -1202,7 +1215,7 @@ def run_dashboard(
                  fix_price_buy_eur_kwh=fix_price_buy_eur,
                  fix_price_sell_eur_kwh=fix_price_sell_eur,
                  verbose=False)
-        return build_figure(bess), act_day.date(), min_date.date(), max_date.date()
+        return build_figure(lp_results), act_day.date(), min_date.date(), max_date.date()
 
     # ── Start-Callback: Gesamtsimulation starten ────────────────────
     @app.callback(
@@ -1284,7 +1297,7 @@ def run_dashboard(
 
         thread = threading.Thread(
             target=_run_year_sim_job,
-            args=(start_ts, end_ts, params, bess.df_energy.copy()),
+            args=(start_ts, end_ts, params, bess.get_netload_profile()),
             daemon=True,
         )
         thread.start()
