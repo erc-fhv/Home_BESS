@@ -21,24 +21,22 @@ class Bess:
         self.price_sell_eur_kwh = pd.Series()
         self.price_buy_eur_kwh = pd.Series()
 
-        # Lade EPEX-Preise und Energieverbrauchsdaten
         self._load_epex_prices()
 
-        # Energieverbrauchs- und Produktionsdaten einlesen
         file_path = Path(__file__).parent / "data" / "example_household_without_battery.csv"
         self.netload_kw = pd.read_csv(file_path, index_col=0)
         self.netload_kw.index = pd.to_datetime(self.netload_kw.index, utc=True)
         self.netload_kw.index = self.netload_kw.index.tz_convert("Europe/Vienna")
 
     def set_netload_profile(self, netload_kw: pd.DataFrame) -> None:
-        """Setzt das Netload-Profil für die Simulation."""
+        """Set the netload profile for the simulation."""
         assert isinstance(netload_kw.index, pd.DatetimeIndex), "index must be datetime index."
         assert netload_kw.index.tz is not None, "Netload index must be timezone-aware."
         assert netload_kw.index.tz.zone == "Europe/Vienna", "Netload index must be 'Vienna' tz."
         self.netload_kw = netload_kw
 
     def get_netload_profile(self) -> pd.DataFrame:
-        """Gibt das aktuell gesetzte Netload-Profil zurück."""
+        """Returns the currently set netload profile."""
         return self.netload_kw
 
     def run(
@@ -55,7 +53,6 @@ class Bess:
         ) -> dict[str, pd.Series]:
         """Run the BESS optimization for a given day and return the results as a dictionary."""
 
-        # Konsistenzcheck
         assert self.capacity_kwh is not None, "Battery capacity must be set."
         assert self.max_charge_kw is not None, "Max charge power must be set."
         assert self.max_discharge_kw is not None, "Max discharge power must be set."
@@ -97,9 +94,9 @@ class Bess:
             max_charge_kw=self.max_charge_kw,
             max_discharge_kw=self.max_discharge_kw,
             soc_min_percent=self.soc_min_percent,
-            soc_max_percent=self.soc_max_percent,
             eta_charge=self.eta_charge,
             eta_discharge=self.eta_discharge,
+            soc_max_percent=self.soc_max_percent,
             verbose=verbose,
             )
 

@@ -17,9 +17,9 @@ class BessOptimizer:
         max_charge_kw: float,
         max_discharge_kw: float,
         soc_min_percent: float,
-        soc_max_percent: float,
         eta_charge: float,
         eta_discharge: float,
+        soc_max_percent: float = 100.0,
         verbose: bool = False,
         ) -> dict[str, pd.Series]:
         """

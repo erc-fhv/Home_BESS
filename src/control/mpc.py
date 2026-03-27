@@ -52,11 +52,17 @@ class MpcController:
                     netload_forecast_kw = my_forecaster.predict(weather_data)
 
                     optimization_results = my_optimizer.optimize(
-                        my_config=my_config,
                         price_sell_eur_kwh=price_sell_eur_kwh,
                         price_buy_eur_kwh=price_buy_eur_kwh,
                         net_load_kw=netload_forecast_kw,
                         soc_init_percent=act_soc_percent,
+                        soc_final_percent=my_config["battery"]["soc_final_percent"],
+                        capacity_kwh=my_config["battery"]["capacity_kwh"],
+                        max_charge_kw=my_config["battery"]["max_charge_kw"],
+                        max_discharge_kw=my_config["battery"]["max_discharge_kw"],
+                        soc_min_percent=my_config["battery"]["soc_min_percent"],
+                        eta_charge=my_config["battery"]["eta_charge"],
+                        eta_discharge=my_config["battery"]["eta_discharge"],
                         verbose=False,
                         )
 
