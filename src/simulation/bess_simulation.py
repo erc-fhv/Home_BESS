@@ -29,7 +29,7 @@ class Bess:
         self.df_energy.index = pd.to_datetime(self.df_energy.index, utc=True)
         self.df_energy.index = self.df_energy.index.tz_convert("Europe/Vienna")
 
-    def optimize_day(
+    def optimize(
         self,
         price_sell: pd.Series,    # ct/kWh
         price_buy: pd.Series,     # ct/kWh
@@ -135,20 +135,21 @@ class Bess:
             tz="Europe/Vienna",
             inclusive="left",
             )
-        self.act_prices_epex = self.prices_epex.loc[act_range]
+        act_prices_epex = self.prices_epex_eur_kWh.loc[act_range]
 
         if use_dynamic_prices:
             # VKW dynamische Preise in EUR/kWh
-            self.price_sell = self.act_prices_epex - epex_offset_sell
-            self.price_buy  = (self.act_prices_epex + epex_offset_buy + grid_fee) * (1 + vat)
+            self.price_sell = act_prices_epex - epex_offset_sell
+            self.price_buy  = (act_prices_epex + epex_offset_buy + grid_fee) * (1 + vat)
         else:
             # fixe Preise in EUR/kWh
-            self.price_sell = pd.Series(fix_price_sell, index=self.act_prices_epex.index)
-            self.price_buy  = pd.Series((fix_price_buy + grid_fee) * (1 + vat), index=self.act_prices_epex.index)
+            self.price_sell = pd.Series(fix_price_sell, index=act_prices_epex.index)
+            self.price_buy  = pd.Series((fix_price_buy + grid_fee) * (1 + vat),
+                index=act_prices_epex.index)
 
         self.net_load_kw = self.df_energy.loc[act_range]["net_load_kw"]
 
-        self.lp_result, self.pulp_model = self.optimize_day(
+        self.lp_result, self.pulp_model = self.optimize(
             price_sell=self.price_sell,
             price_buy=self.price_buy,
             net_load=self.net_load_kw,
@@ -282,8 +283,8 @@ class Bess:
         else:
             raise FileNotFoundError(f"EPEX price file '{file_path}' not found.")
 
-        self.prices_epex = df_prices["day_ahead_price_eur_kWh"]
-        self.prices_epex = self.prices_epex.resample('15min').ffill()
+        self.prices_epex_eur_kWh = df_prices["day_ahead_price_eur_kWh"]
+        self.prices_epex_eur_kWh = self.prices_epex_eur_kWh.resample('15min').ffill()
 
 if __name__ == "__main__":
     from simulation.web_app import run_dashboard

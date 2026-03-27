@@ -63,7 +63,9 @@ def _run_year_sim_job(
     end_ts: pd.Timestamp,
     params: dict,
     df_energy_snapshot: pd.DataFrame,
-) -> None:
+    ) -> None:
+    """Runs the year simulation in a separate thread and emits progress updates via SocketIO."""
+
     rows: list[dict] = []
     total_days = 0
     try:
@@ -1141,9 +1143,9 @@ def run_dashboard(
         prevent_initial_call=True,
     )
     def update_graph(act_day, residual_contents, load_contents,
-                     gen_contents, price_source, epex_offset_buy,
-                     epex_offset_sell, grid_fee, vat,
-                     fix_price_buy, fix_price_sell,
+                     gen_contents, price_source, epex_offset_buy_cent,
+                     epex_offset_sell_cent, grid_fee_cent, vat,
+                     fix_price_buy_cent, fix_price_sell_cent,
                      battery_capacity, battery_max_charge, battery_max_discharge,
                      battery_soc_min, battery_soc_final, battery_eta_charge, battery_eta_discharge,
                      input_mode):
@@ -1184,14 +1186,21 @@ def run_dashboard(
             eta_discharge=battery_eta_discharge,
         )
 
+        epex_offset_buy_eur = (epex_offset_buy_cent or 0) / 100.0
+        epex_offset_sell_eur = (epex_offset_sell_cent or 0) / 100.0
+        grid_fee_eur = (grid_fee_cent or 0) / 100.0
+        vat_fraction = (vat or 0) / 100.0
+        fix_price_buy_eur = (fix_price_buy_cent or 0) / 100.0
+        fix_price_sell_eur = (fix_price_sell_cent or 0) / 100.0
+
         bess.run(act_day=act_day,
                  use_dynamic_prices=(price_source == "epex"),
-                 epex_offset_buy=(epex_offset_buy or 0) / 100.0,
-                 epex_offset_sell=(epex_offset_sell or 0) / 100.0,
-                 grid_fee=(grid_fee or 0) / 100.0,
-                 vat=(vat or 0) / 100.0,
-                 fix_price_buy=(fix_price_buy or 0) / 100.0,
-                 fix_price_sell=(fix_price_sell or 0) / 100.0,
+                 epex_offset_buy=epex_offset_buy_eur,
+                 epex_offset_sell=epex_offset_sell_eur,
+                 grid_fee=grid_fee_eur,
+                 vat=vat_fraction,
+                 fix_price_buy=fix_price_buy_eur,
+                 fix_price_sell=fix_price_sell_eur,
                  verbose=False)
         return build_figure(bess), act_day.date(), min_date.date(), max_date.date()
 
@@ -1248,14 +1257,22 @@ def run_dashboard(
             start_ts, end_ts = end_ts, start_ts
 
         days = pd.date_range(start=start_ts, end=end_ts, freq="1D", tz="Europe/Vienna")
+
+        epex_offset_buy_eur = (epex_offset_buy or 0) / 100.0
+        epex_offset_sell_eur = (epex_offset_sell or 0) / 100.0
+        grid_fee_eur = (grid_fee or 0) / 100.0
+        vat_fraction = (vat or 0) / 100.0
+        fix_price_buy_eur = (fix_price_buy or 0) / 100.0
+        fix_price_sell_eur = (fix_price_sell or 0) / 100.0
+
         params = {
             "use_dynamic_prices": price_source == "epex",
-            "epex_offset_buy": (epex_offset_buy or 0) / 100.0,
-            "epex_offset_sell": (epex_offset_sell or 0) / 100.0,
-            "grid_fee": (grid_fee or 0) / 100.0,
-            "vat": (vat or 0) / 100.0,
-            "fix_price_buy": (fix_price_buy or 0) / 100.0,
-            "fix_price_sell": (fix_price_sell or 0) / 100.0,
+            "epex_offset_buy": epex_offset_buy_eur,
+            "epex_offset_sell": epex_offset_sell_eur,
+            "grid_fee": grid_fee_eur,
+            "vat": vat_fraction,
+            "fix_price_buy": fix_price_buy_eur,
+            "fix_price_sell": fix_price_sell_eur,
             "battery_capacity": battery_capacity or 30.72,
             "battery_max_charge": battery_max_charge or 8.0,
             "battery_max_discharge": battery_max_discharge or 8.0,
