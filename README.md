@@ -2,10 +2,12 @@
 
 ## Sytemd service file for running the MPC controller on an server:
 
-Read out the content of the file and save it as /etc/systemd/system/mpc.service:
+Create the following file:
 ```
 sudo nano /etc/systemd/system/mpc.service
 ```
+
+Add this content to the file:
 
 ```ini
 [Unit]
@@ -13,7 +15,7 @@ Description=MPC Python Service
 After=network.target
 
 [Service]
-User=deinuser
+User=molu
 WorkingDirectory=/home/molu/repos/Home_BESS/
 ExecStart=/home/molu/repos/Home_BESS/.venv/bin/python -u /home/molu/repos/Home_BESS/src/control/mpc.py
 Restart=always
