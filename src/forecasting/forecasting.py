@@ -59,7 +59,7 @@ class ForecastingModel:
     def train_model(self):
 
         # Read in the historic load profile
-        data_file = Path(__file__).resolve().parent.parent / "data" / \
+        data_file = Path(__file__).resolve().parent.parent / "simulation" / "data" / \
             "example_household_without_battery.csv"
         df_load = pd.read_csv(data_file, index_col=0)
         df_load.index = pd.to_datetime(df_load.index, utc=True)

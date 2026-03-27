@@ -28,7 +28,8 @@ dependencies = [
     "ipywidgets",
     "pyarrow",
     "nbformat",
-    "flask_socketio"
+    "flask_socketio",
+    "ipympl"
 ]
 
 [build-system]
