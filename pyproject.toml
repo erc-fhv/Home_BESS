@@ -27,7 +27,8 @@ dependencies = [
     "loadforecasting-models",
     "ipywidgets",
     "pyarrow",
-    "nbformat"
+    "nbformat",
+    "flask_socketio"
 ]
 
 [build-system]

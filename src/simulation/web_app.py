@@ -639,6 +639,8 @@ def run_dashboard(
                                          "disabled": False},
                                         {"label": " Mathematische Optimierung (MILP)",
                                          "value": "model-predictive-control"},
+                                        {"label": " Batterie wegschalten",
+                                         "value": "no-control"},
                                     ],
                                     value="model-predictive-control",
                                     labelStyle={
