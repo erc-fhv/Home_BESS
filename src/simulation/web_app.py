@@ -554,7 +554,7 @@ def run_dashboard(
                                     options=[
                                         {"label": " Residuallast",
                                          "value": "residual"},
-                                        {"label": " Last + Erzeugung",
+                                        {"label": " Last und Erzeugung",
                                          "value": "load_gen"},
                                     ],
                                     value="residual",
