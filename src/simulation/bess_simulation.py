@@ -13,7 +13,7 @@ class Bess:
         self.max_charge_kw = None
         self.max_discharge_kw = None
         self.soc_min_percent = None
-        self.soc_max_percent = None
+        self.soc_final_percent = None
         self.eta_charge = None
         self.eta_discharge = None
         self.net_load_of_one_day_kw = None
@@ -50,16 +50,18 @@ class Bess:
         fix_price_buy_eur_kwh: float,
         fix_price_sell_eur_kwh: float,
         verbose: bool = False,
+        control_algorithm: str = "model-predictive-control",
         ) -> dict[str, pd.Series]:
         """Run the BESS optimization for a given day and return the results as a dictionary."""
 
-        assert self.capacity_kwh is not None, "Battery capacity must be set."
-        assert self.max_charge_kw is not None, "Max charge power must be set."
-        assert self.max_discharge_kw is not None, "Max discharge power must be set."
-        assert self.soc_min_percent is not None, "Minimum SOC must be set."
-        assert self.soc_max_percent is not None, "Maximum SOC must be set."
-        assert self.eta_charge is not None, "Charging efficiency must be set."
-        assert self.eta_discharge is not None, "Discharging efficiency must be set."
+        if control_algorithm != "no-control":
+            assert self.capacity_kwh is not None, "Battery capacity must be set."
+            assert self.max_charge_kw is not None, "Max charge power must be set."
+            assert self.max_discharge_kw is not None, "Max discharge power must be set."
+            assert self.soc_min_percent is not None, "Minimum SOC must be set."
+            assert self.soc_final_percent is not None, "Maximum SOC must be set."
+            assert self.eta_charge is not None, "Charging efficiency must be set."
+            assert self.eta_discharge is not None, "Discharging efficiency must be set."
 
         act_range = pd.date_range(
             start=act_day,
@@ -84,25 +86,50 @@ class Bess:
         soc_0_percent = 50.0
 
         my_optimizer = BessOptimizer()
-        lp_results = my_optimizer.optimize(
-            price_sell_eur_kwh=self.price_sell_eur_kwh,
-            price_buy_eur_kwh=self.price_buy_eur_kwh,
-            net_load_kw=self.net_load_of_one_day_kw,
-            soc_init_percent=soc_0_percent,
-            soc_final_percent=soc_0_percent,
-            capacity_kwh=self.capacity_kwh,
-            max_charge_kw=self.max_charge_kw,
-            max_discharge_kw=self.max_discharge_kw,
-            soc_min_percent=self.soc_min_percent,
-            eta_charge=self.eta_charge,
-            eta_discharge=self.eta_discharge,
-            soc_max_percent=self.soc_max_percent,
-            verbose=verbose,
+
+        if control_algorithm == "no-control":
+            lp_results = my_optimizer.no_optimize(
+                price_sell_eur_kwh=self.price_sell_eur_kwh,
+                price_buy_eur_kwh=self.price_buy_eur_kwh,
+                net_load_kw=self.net_load_of_one_day_kw,
+                verbose=verbose,
+            )
+        elif control_algorithm == "pv-ueberschussladen":
+            lp_results = my_optimizer.pv_surplus_charge(
+                price_sell_eur_kwh=self.price_sell_eur_kwh,
+                price_buy_eur_kwh=self.price_buy_eur_kwh,
+                net_load_kw=self.net_load_of_one_day_kw,
+                soc_init_percent=soc_0_percent,
+                capacity_kwh=self.capacity_kwh,
+                max_charge_kw=self.max_charge_kw,
+                max_discharge_kw=self.max_discharge_kw,
+                soc_min_percent=self.soc_min_percent,
+                soc_max_percent=100.0,
+                eta_charge=self.eta_charge,
+                eta_discharge=self.eta_discharge,
+                verbose=verbose,
+            )
+        else:
+            lp_results = my_optimizer.optimize_milp(
+                price_sell_eur_kwh=self.price_sell_eur_kwh,
+                price_buy_eur_kwh=self.price_buy_eur_kwh,
+                net_load_kw=self.net_load_of_one_day_kw,
+                soc_init_percent=soc_0_percent,
+                soc_final_percent=soc_0_percent,
+                capacity_kwh=self.capacity_kwh,
+                max_charge_kw=self.max_charge_kw,
+                max_discharge_kw=self.max_discharge_kw,
+                soc_min_percent=self.soc_min_percent,
+                eta_charge=self.eta_charge,
+                eta_discharge=self.eta_discharge,
+                soc_max_percent=self.soc_final_percent,
+                verbose=verbose,
             )
 
         lp_results["act_prices_epex_eur_kwh"] = self.act_prices_epex_eur_kwh
         lp_results["price_buy_eur_kwh"] = self.price_buy_eur_kwh
         lp_results["price_sell_eur_kwh"] = self.price_sell_eur_kwh
+        lp_results["net_load_kw"] = self.net_load_of_one_day_kw
 
         return lp_results
 
@@ -119,6 +146,7 @@ class Bess:
         fix_price_sell: float,
         verbose: bool = False,
         progress_callback: Callable | None = None,
+        control_algorithm: str = "model-predictive-control",
     ) -> pd.DataFrame:
         """Führt die Simulation für jeden Tag in [start_day, end_day] aus."""
 
@@ -141,6 +169,7 @@ class Bess:
                 fix_price_buy_eur_kwh=fix_price_buy,
                 fix_price_sell_eur_kwh=fix_price_sell,
                 verbose=verbose,
+                control_algorithm=control_algorithm,
                 )
             rows.append(lp_results)
 
@@ -175,7 +204,7 @@ class Bess:
         if soc_min_percent is not None:
             self.soc_min_percent = soc_min_percent
         if soc_final_percent is not None:
-            self.soc_max_percent = soc_final_percent
+            self.soc_final_percent = soc_final_percent
         if eta_charge is not None:
             self.eta_charge = eta_charge
         if eta_discharge is not None:

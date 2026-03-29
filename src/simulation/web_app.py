@@ -124,6 +124,7 @@ def _run_year_sim_job(
             fix_price_sell=params.get("fix_price_sell", 0.0),
             verbose=False,
             progress_callback=_on_progress,
+            control_algorithm=params.get("control_algorithm", "model-predictive-control"),
         )
 
         done_state = {
@@ -160,7 +161,7 @@ def build_figure(lp_results: dict) -> go.Figure:
         vertical_spacing=0.04,
         subplot_titles=[
             "Strom Preis (brutto)",
-            "Residuallast (= Last - PV)",
+            "Residuallast (ohne Batterieeinfluss)",
             "Batterie State of Charge",
             "Netz Einspeisung / Bezug",
             "Batterie Laden / Entladen",
@@ -202,8 +203,8 @@ def build_figure(lp_results: dict) -> go.Figure:
 
     fig.add_trace(
         go.Scatter(
-            x=lp_results["set_netload_kw"].index,
-            y=lp_results["set_netload_kw"].values,
+            x=lp_results["net_load_kw"].index,
+            y=lp_results["net_load_kw"].values,
             line_shape="hv",
             name="Residuallast",
             legendgroup="g2", legend="legend2",
@@ -639,7 +640,7 @@ def run_dashboard(
                                          "disabled": False},
                                         {"label": " Mathematische Optimierung (MILP)",
                                          "value": "model-predictive-control"},
-                                        {"label": " Batterie wegschalten",
+                                        {"label": " Ohne Batterie",
                                          "value": "no-control"},
                                     ],
                                     value="model-predictive-control",
@@ -1083,8 +1084,7 @@ def run_dashboard(
         Input("control-algorithm", "value"),
     )
     def toggle_mpc_options(algorithm):
-        disabled = algorithm == "pv-ueberschussladen"
-        disabled = True # molu
+        disabled = algorithm != "model-predictive-control"
         feed_in_opts = [{
             "label": " Batterie-Einspeisung verbieten",
             "value": "yes",
@@ -1154,6 +1154,7 @@ def run_dashboard(
         Input("battery-soc-final", "value"),
         Input("battery-eta-charge", "value"),
         Input("battery-eta-discharge", "value"),
+        Input("control-algorithm", "value"),
         State("input-mode", "value"),
         prevent_initial_call=True,
     )
@@ -1163,7 +1164,7 @@ def run_dashboard(
                      fix_price_buy_cent, fix_price_sell_cent,
                      battery_capacity, battery_max_charge, battery_max_discharge,
                      battery_soc_min, battery_soc_final, battery_eta_charge, battery_eta_discharge,
-                     input_mode):
+                     control_algorithm, input_mode):
 
         ctx = callback_context
         triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
@@ -1208,15 +1209,20 @@ def run_dashboard(
         fix_price_buy_eur = (fix_price_buy_cent or 0) / 100.0
         fix_price_sell_eur = (fix_price_sell_cent or 0) / 100.0
 
-        lp_results = bess.run(act_day=act_day,
-                 use_dynamic_prices=(price_source == "epex"),
-                 epex_offset_buy_eur_kwh=epex_offset_buy_eur,
-                 epex_offset_sell_eur_kwh=epex_offset_sell_eur,
-                 grid_fee_eur_kwh=grid_fee_eur,
-                 vat=vat_fraction,
-                 fix_price_buy_eur_kwh=fix_price_buy_eur,
-                 fix_price_sell_eur_kwh=fix_price_sell_eur,
-                 verbose=False)
+        run_kwargs = dict(
+            act_day=act_day,
+            use_dynamic_prices=(price_source == "epex"),
+            epex_offset_buy_eur_kwh=epex_offset_buy_eur,
+            epex_offset_sell_eur_kwh=epex_offset_sell_eur,
+            grid_fee_eur_kwh=grid_fee_eur,
+            vat=vat_fraction,
+            fix_price_buy_eur_kwh=fix_price_buy_eur,
+            fix_price_sell_eur_kwh=fix_price_sell_eur,
+            verbose=False,
+        )
+
+        lp_results = bess.run(**run_kwargs, control_algorithm=control_algorithm)
+
         return build_figure(lp_results), act_day.date(), min_date.date(), max_date.date()
 
     # ── Start-Callback: Gesamtsimulation starten ────────────────────
@@ -1242,6 +1248,7 @@ def run_dashboard(
         State("battery-soc-final", "value"),
         State("battery-eta-charge", "value"),
         State("battery-eta-discharge", "value"),
+        State("control-algorithm", "value"),
         prevent_initial_call=True,
     )
     def start_total_simulation(
@@ -1262,6 +1269,7 @@ def run_dashboard(
         battery_soc_final,
         battery_eta_charge,
         battery_eta_discharge,
+        control_algorithm,
     ):
         if not n_clicks or not start_date or not end_date:
             raise PreventUpdate
@@ -1295,6 +1303,7 @@ def run_dashboard(
             "battery_soc_final": battery_soc_final or 50.0,
             "battery_eta_charge": battery_eta_charge or 0.936,
             "battery_eta_discharge": battery_eta_discharge or 0.936,
+            "control_algorithm": control_algorithm or "model-predictive-control",
         }
 
         thread = threading.Thread(

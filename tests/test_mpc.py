@@ -68,7 +68,7 @@ def test_first_main_loop_run():
     assert netload_forecast_kw.max() <= 20, f"Got {netload_forecast_kw.max()}"
     assert netload_forecast_kw.std() >= 1, f"Got {netload_forecast_kw.std()}"
 
-    optimization_results = my_optimizer.optimize(
+    optimization_results = my_optimizer.optimize_milp(
         my_config=my_config,
         price_sell_eur_kwh=price_sell_eur_kwh,
         price_buy_eur_kwh=price_buy_eur_kwh,

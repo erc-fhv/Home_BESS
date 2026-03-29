@@ -9,3 +9,4 @@ pyproject.toml
 **.parquet
 **/output/**
 **.sh
+src/simulation/data/epex_prices.csv

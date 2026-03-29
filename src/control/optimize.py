@@ -6,7 +6,7 @@ import pandas as pd
 
 class BessOptimizer:
 
-    def optimize(
+    def optimize_milp(
         self,
         price_sell_eur_kwh: pd.Series,
         price_buy_eur_kwh: pd.Series,
@@ -101,3 +101,113 @@ class BessOptimizer:
         }
 
         return optimization_results
+
+    def no_optimize(
+        self,
+        price_sell_eur_kwh: pd.Series,
+        price_buy_eur_kwh: pd.Series,
+        net_load_kw: pd.Series,
+        verbose: bool = False,
+    ) -> dict:
+        """Ohne Batterie: Netzlast geht direkt ins Netz."""
+
+        time_points = net_load_kw.index
+        time_periods = time_points[:-1]
+        delta_t = (time_points[1] - time_points[0]).total_seconds() / 3600.0
+
+        nl = net_load_kw.iloc[:-1]
+        p_buy = nl.clip(lower=0)
+        p_buy.index = time_periods
+        p_sell = (-nl).clip(lower=0)
+        p_sell.index = time_periods
+        profit = float((price_sell_eur_kwh.iloc[:-1] * p_sell - price_buy_eur_kwh.iloc[:-1] * p_buy).sum() * delta_t)
+
+        return {
+            "soc_percent": pd.Series(0.0, index=time_points),
+            "p_ch_kw": pd.Series(0.0, index=time_periods),
+            "p_dis_kw": pd.Series(0.0, index=time_periods),
+            "set_netload_kw": pd.Series(nl.values, index=time_periods),
+            "milp_status": "No battery",
+            "date": pd.Timestamp(time_points[0]).normalize().date(),
+            "profit_eur": profit,
+            "p_buy_kw": p_buy,
+            "p_sell_kw": p_sell,
+        }
+
+    def pv_surplus_charge(
+        self,
+        price_sell_eur_kwh: pd.Series,
+        price_buy_eur_kwh: pd.Series,
+        net_load_kw: pd.Series,
+        soc_init_percent: float,
+        capacity_kwh: float,
+        max_charge_kw: float,
+        max_discharge_kw: float,
+        soc_min_percent: float,
+        soc_max_percent: float,
+        eta_charge: float,
+        eta_discharge: float,
+        verbose: bool = False,
+    ) -> dict:
+        """PV-Ueberschussladen: Ueberschuss laden, Bedarf aus Batterie decken."""
+
+        time_points = net_load_kw.index
+        time_periods = time_points[:-1]
+        nl = net_load_kw.iloc[:-1].values  # 95 periods, like MILP
+        n = len(nl)
+        delta_t = (time_points[1] - time_points[0]).total_seconds() / 3600.0
+
+        soc_min_kwh = soc_min_percent * capacity_kwh / 100.0
+        soc_max_kwh = soc_max_percent * capacity_kwh / 100.0
+
+        # Pre-allocate arrays
+        soc = np.empty(n + 1)
+        p_ch = np.zeros(n)
+        p_dis = np.zeros(n)
+
+        soc[0] = soc_init_percent * capacity_kwh / 100.0
+
+        for i in range(n):
+            if nl[i] < 0:
+                # PV-Ueberschuss → Batterie laden
+                surplus = -nl[i]
+                charge_room = soc_max_kwh - soc[i]
+                max_ch = min(max_charge_kw,
+                             charge_room / (eta_charge * delta_t)) \
+                    if eta_charge * delta_t > 0 else 0.0
+                p_ch[i] = min(surplus, max(max_ch, 0.0))
+                soc[i + 1] = soc[i] + p_ch[i] * eta_charge * delta_t
+            else:
+                # Verbrauch → Batterie entladen
+                discharge_room = soc[i] - soc_min_kwh
+                max_dis = min(max_discharge_kw,
+                              discharge_room * eta_discharge / delta_t) \
+                    if delta_t > 0 else 0.0
+                p_dis[i] = min(nl[i], max(max_dis, 0.0))
+                soc[i + 1] = soc[i] - p_dis[i] / eta_discharge * delta_t
+
+        # Leistungsbilanz
+        p_buy = np.maximum(nl - p_dis + p_ch, 0.0)   # Netzbezug (abzgl. Entladung, zzgl. Ladung)
+        p_sell = np.maximum(-(nl - p_dis + p_ch), 0.0) # Einspeisung
+
+        # Netz-Residuallast = Bezug - Einspeisung = nl + p_ch - p_dis
+        set_netload = p_buy - p_sell
+
+        soc_percent = soc / capacity_kwh * 100.0
+
+        # Profit
+        sell_prices = price_sell_eur_kwh.iloc[:-1].values
+        buy_prices = price_buy_eur_kwh.iloc[:-1].values
+        profit = float(np.sum((sell_prices * p_sell - buy_prices * p_buy) * delta_t))
+
+        return {
+            "soc_percent": pd.Series(soc_percent, index=time_points),
+            "p_ch_kw": pd.Series(p_ch, index=time_periods),
+            "p_dis_kw": pd.Series(p_dis, index=time_periods),
+            "set_netload_kw": pd.Series(set_netload, index=time_periods),
+            "milp_status": "PV surplus",
+            "date": pd.Timestamp(time_points[0]).normalize().date(),
+            "profit_eur": profit,
+            "p_buy_kw": pd.Series(p_buy, index=time_periods),
+            "p_sell_kw": pd.Series(p_sell, index=time_periods),
+        }

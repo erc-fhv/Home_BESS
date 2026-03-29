@@ -51,7 +51,7 @@ class MpcController:
 
                     netload_forecast_kw = my_forecaster.predict(weather_data)
 
-                    optimization_results = my_optimizer.optimize(
+                    optimization_results = my_optimizer.optimize_milp(
                         price_sell_eur_kwh=price_sell_eur_kwh,
                         price_buy_eur_kwh=price_buy_eur_kwh,
                         net_load_kw=netload_forecast_kw,
