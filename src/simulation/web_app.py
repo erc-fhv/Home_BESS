@@ -507,6 +507,7 @@ def run_dashboard(
     bess: Bess,
     use_dynamic_prices: bool = True,
     port: int = 8051,
+    debug: bool = False,
 ) -> None:
 
     global _socketio
@@ -1520,7 +1521,8 @@ def run_dashboard(
         Input("session-id", "data"),
     )
 
-    _socketio.run(app.server, debug=True, use_reloader=False, port=port, allow_unsafe_werkzeug=True)
+    _socketio.run(app.server, debug=debug, use_reloader=False, port=port,
+                  allow_unsafe_werkzeug=True)
 
 
 if __name__ == "__main__":
