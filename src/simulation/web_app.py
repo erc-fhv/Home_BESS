@@ -1090,10 +1090,18 @@ def run_dashboard(
     @app.callback(
         Output("allow-feed-in", "options"),
         Output("opt-objective", "options"),
+        Output("battery-capacity", "disabled"),
+        Output("battery-max-charge", "disabled"),
+        Output("battery-max-discharge", "disabled"),
+        Output("battery-soc-min", "disabled"),
+        Output("battery-soc-final", "disabled"),
+        Output("battery-eta-charge", "disabled"),
+        Output("battery-eta-discharge", "disabled"),
         Input("control-algorithm", "value"),
     )
     def toggle_mpc_options(algorithm):
         disabled = algorithm != "model-predictive-control"
+        no_battery = algorithm == "no-control"
         feed_in_opts = [{
             "label": " Batterie-Einspeisung verbieten",
             "value": "yes",
@@ -1107,7 +1115,9 @@ def run_dashboard(
             {"label": " Minimiere Netzspitzen",
              "value": "peak_shaving", "disabled": disabled},
         ]
-        return feed_in_opts, obj_opts
+        return (feed_in_opts, obj_opts,
+                no_battery, no_battery, no_battery, no_battery,
+                no_battery, no_battery, no_battery)
 
     @app.callback(
         Output("act-day-picker", "date"),
