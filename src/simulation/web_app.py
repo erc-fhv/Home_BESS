@@ -1057,6 +1057,9 @@ def run_dashboard(
         ],
     )
 
+    # ── PV-Ueberschuss Cache (full-year pre-computation) ──────────────
+    _pv_cache: dict = {}
+
     # ── Callbacks ────────────────────────────────────────────────────────
     @app.callback(
         Output("upload-residual", "style"),
@@ -1209,8 +1212,7 @@ def run_dashboard(
         fix_price_buy_eur = (fix_price_buy_cent or 0) / 100.0
         fix_price_sell_eur = (fix_price_sell_cent or 0) / 100.0
 
-        run_kwargs = dict(
-            act_day=act_day,
+        sim_kwargs = dict(
             use_dynamic_prices=(price_source == "epex"),
             epex_offset_buy_eur_kwh=epex_offset_buy_eur,
             epex_offset_sell_eur_kwh=epex_offset_sell_eur,
@@ -1221,7 +1223,50 @@ def run_dashboard(
             verbose=False,
         )
 
-        lp_results = bess.run(**run_kwargs, control_algorithm=control_algorithm)
+        if control_algorithm == "pv-ueberschussladen":
+            # Build cache key from all parameters that affect PV surplus results
+            profile_fp = (
+                str(netload_profile.index.min()),
+                str(netload_profile.index.max()),
+                len(netload_profile),
+            )
+            params_key = (
+                price_source, epex_offset_buy_cent, epex_offset_sell_cent,
+                grid_fee_cent, vat, fix_price_buy_cent, fix_price_sell_cent,
+                battery_capacity, battery_max_charge, battery_max_discharge,
+                battery_soc_min, battery_soc_final, battery_eta_charge,
+                battery_eta_discharge, profile_fp,
+            )
+            if _pv_cache.get("params_key") != params_key:
+                # Recompute full dataset with SOC carry-over
+                _pv_cache.clear()
+                _pv_cache["params_key"] = params_key
+                soc = battery_soc_final or 50.0
+                all_days = pd.date_range(
+                    start=min_date, end=max_date, freq="1D", tz="Europe/Vienna",
+                )
+                for day in all_days:
+                    day_res = bess.run(
+                        act_day=day, **sim_kwargs,
+                        control_algorithm="pv-ueberschussladen",
+                        soc_init_percent=soc,
+                    )
+                    _pv_cache[str(day.date())] = day_res
+                    soc_series = day_res.get("soc_percent")
+                    if isinstance(soc_series, pd.Series) and len(soc_series) > 0:
+                        soc = float(soc_series.iloc[-1])
+
+            lp_results = _pv_cache.get(str(act_day.date()))
+            if lp_results is None:
+                lp_results = bess.run(
+                    act_day=act_day, **sim_kwargs,
+                    control_algorithm="pv-ueberschussladen",
+                )
+        else:
+            lp_results = bess.run(
+                act_day=act_day, **sim_kwargs,
+                control_algorithm=control_algorithm,
+            )
 
         return build_figure(lp_results), act_day.date(), min_date.date(), max_date.date()
 

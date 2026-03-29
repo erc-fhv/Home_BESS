@@ -51,6 +51,7 @@ class Bess:
         fix_price_sell_eur_kwh: float,
         verbose: bool = False,
         control_algorithm: str = "model-predictive-control",
+        soc_init_percent: float = 50.0,
         ) -> dict[str, pd.Series]:
         """Run the BESS optimization for a given day and return the results as a dictionary."""
 
@@ -83,7 +84,6 @@ class Bess:
                 * (1 + vat), index=self.act_prices_epex_eur_kwh.index)
 
         self.net_load_of_one_day_kw = self.netload_kw.loc[act_range]["net_load_kw"]
-        soc_0_percent = 50.0
 
         my_optimizer = BessOptimizer()
 
@@ -99,7 +99,7 @@ class Bess:
                 price_sell_eur_kwh=self.price_sell_eur_kwh,
                 price_buy_eur_kwh=self.price_buy_eur_kwh,
                 net_load_kw=self.net_load_of_one_day_kw,
-                soc_init_percent=soc_0_percent,
+                soc_init_percent=soc_init_percent,
                 capacity_kwh=self.capacity_kwh,
                 max_charge_kw=self.max_charge_kw,
                 max_discharge_kw=self.max_discharge_kw,
@@ -114,8 +114,8 @@ class Bess:
                 price_sell_eur_kwh=self.price_sell_eur_kwh,
                 price_buy_eur_kwh=self.price_buy_eur_kwh,
                 net_load_kw=self.net_load_of_one_day_kw,
-                soc_init_percent=soc_0_percent,
-                soc_final_percent=soc_0_percent,
+                soc_init_percent=soc_init_percent,
+                soc_final_percent=soc_init_percent,
                 capacity_kwh=self.capacity_kwh,
                 max_charge_kw=self.max_charge_kw,
                 max_discharge_kw=self.max_discharge_kw,
@@ -156,6 +156,7 @@ class Bess:
             raise ValueError("end_day must be greater than or equal to start_day")
         all_days = pd.date_range(start=start_ts, end=end_ts, freq="1D", tz="Europe/Vienna")
         rows = []
+        soc_init = self.soc_final_percent if self.soc_final_percent is not None else 50.0
 
         for idx, act_day in enumerate(all_days):
 
@@ -170,8 +171,14 @@ class Bess:
                 fix_price_sell_eur_kwh=fix_price_sell,
                 verbose=verbose,
                 control_algorithm=control_algorithm,
+                soc_init_percent=soc_init,
                 )
             rows.append(lp_results)
+
+            # SOC carry-over: use end-of-day SOC as start for next day
+            soc_series = lp_results.get("soc_percent")
+            if isinstance(soc_series, pd.Series) and len(soc_series) > 0:
+                soc_init = float(soc_series.iloc[-1])
 
             if progress_callback is not None:
                 progress_callback(idx+1, len(all_days), act_day, lp_results)
