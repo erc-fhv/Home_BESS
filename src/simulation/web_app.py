@@ -1,6 +1,8 @@
 import base64
+import copy
 from io import StringIO
 import threading
+import uuid
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,7 +10,7 @@ from plotly.subplots import make_subplots
 import pulp
 from dash import Dash, dcc, html, Input, Output, callback_context, State, no_update
 from dash.exceptions import PreventUpdate
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, join_room
 
 from simulation.bess_simulation import Bess
 
@@ -63,6 +65,7 @@ def _run_year_sim_job(
     end_ts: pd.Timestamp,
     params: dict,
     df_energy_snapshot: pd.DataFrame,
+    session_id: str = "",
     ) -> None:
     """Runs the year simulation in a separate thread and emits progress updates via SocketIO."""
 
@@ -113,7 +116,7 @@ def _run_year_sim_job(
                 "error": None,
             }
             if _socketio is not None:
-                _socketio.emit("sim_progress", state)
+                _socketio.emit("sim_progress", state, room=session_id)
 
         worker_bess.run_total_simulation(
             start_day=start_ts,
@@ -143,7 +146,7 @@ def _run_year_sim_job(
             "battery_capacity": params.get("battery_capacity", 0.0),
         }
         if _socketio is not None:
-            _socketio.emit("sim_progress", done_state)
+            _socketio.emit("sim_progress", done_state, room=session_id)
     except Exception as exc:
         import traceback; traceback.print_exc()
         error_state = {
@@ -156,7 +159,7 @@ def _run_year_sim_job(
             "error": str(exc),
         }
         if _socketio is not None:
-            _socketio.emit("sim_progress", error_state)
+            _socketio.emit("sim_progress", error_state, room=session_id)
 
 
 def build_figure(lp_results: dict) -> go.Figure:
@@ -519,17 +522,28 @@ def run_dashboard(
     )
     _socketio = SocketIO(app.server, async_mode="threading", cors_allowed_origins="*")
 
+    @_socketio.on("join")
+    def _on_join(data):
+        join_room(data.get("session_id", ""))
+
     # Verfügbare Tage aus dem aktuellen Datensatz
     netload_kw = bess.get_netload_profile()
     _first_date = netload_kw.index.min().normalize()
     _last_date = netload_kw.index.max().normalize()
 
-    # ── Layout ───────────────────────────────────────────────────────────
-    app.layout = html.Div(
-        style={"backgroundColor": COLOR["bg"], "minHeight": "100vh",
-                "fontFamily": "Inter, system-ui, -apple-system, sans-serif"},
-        children=[
-            dcc.Store(id="ws-sim-progress"),
+    # Default-Netload als JSON für neue Sessions
+    _default_netload_json = bess.get_netload_profile().to_json(date_format="iso")
+
+    # ── Layout (Funktion → jeder Page-Load bekommt eigene Session-ID) ─
+    def _serve_layout():
+        return html.Div(
+            style={"backgroundColor": COLOR["bg"], "minHeight": "100vh",
+                    "fontFamily": "Inter, system-ui, -apple-system, sans-serif"},
+            children=[
+                dcc.Store(id="session-id", data=str(uuid.uuid4())),
+                dcc.Store(id="netload-store", data=_default_netload_json),
+                dcc.Store(id="ws-sim-progress"),
+                dcc.Store(id="socket-init"),
             # ── Header ───────────────────────────────────────────────────
             html.Div(
                 style={"backgroundColor": COLOR["header"],
@@ -1063,8 +1077,10 @@ def run_dashboard(
         ],
     )
 
-    # ── PV-Ueberschuss Cache (full-year pre-computation) ──────────────
-    _pv_cache: dict = {}
+    app.layout = _serve_layout
+
+    # ── PV-Ueberschuss Cache (per Session) ────────────────────────────
+    _pv_caches: dict[str, dict] = {}
 
     # ── Callbacks ────────────────────────────────────────────────────────
     @app.callback(
@@ -1155,6 +1171,7 @@ def run_dashboard(
         Output("act-day-picker", "date", allow_duplicate=True),
         Output("act-day-picker", "min_date_allowed"),
         Output("act-day-picker", "max_date_allowed"),
+        Output("netload-store", "data"),
         Input("act-day-picker", "date"),
         Input("residual-profile-upload", "contents"),
         Input("load-profile-upload", "contents"),
@@ -1177,6 +1194,8 @@ def run_dashboard(
         Input("allow-feed-in", "value"),
         Input("opt-objective", "value"),
         State("input-mode", "value"),
+        State("netload-store", "data"),
+        State("session-id", "data"),
         prevent_initial_call=True,
     )
     def update_graph(act_day, residual_contents, load_contents,
@@ -1185,10 +1204,13 @@ def run_dashboard(
                      fix_price_buy_cent, fix_price_sell_cent,
                      battery_capacity, battery_max_charge, battery_max_discharge,
                      battery_soc_min, battery_soc_final, battery_eta_charge, battery_eta_discharge,
-                     control_algorithm, allow_feed_in_val, opt_objective, input_mode):
+                     control_algorithm, allow_feed_in_val, opt_objective,
+                     input_mode, netload_json, session_id):
 
         ctx = callback_context
         triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
+
+        netload_out = no_update
 
         # Nur bei Upload neu parsen, nicht bei Datumswechsel
         if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
@@ -1197,13 +1219,23 @@ def run_dashboard(
                     df_load = parse_csv(load_contents)
                     df_gen = parse_csv(gen_contents)
                     net = df_load["value_kw"] - df_gen["value_kw"]
-                    bess.set_netload_profile(pd.DataFrame({"net_load_kw": net}))
+                    df_net = pd.DataFrame({"net_load_kw": net})
+                    netload_json = df_net.to_json(date_format="iso")
+                    netload_out = netload_json
             elif residual_contents:
                 df_res = parse_csv(residual_contents)
-                bess.set_netload_profile(pd.DataFrame(
-                    {"net_load_kw": df_res["value_kw"]}))
+                df_net = pd.DataFrame({"net_load_kw": df_res["value_kw"]})
+                netload_json = df_net.to_json(date_format="iso")
+                netload_out = netload_json
 
-        netload_profile = bess.get_netload_profile()
+        # Worker-Bess (per-Request, shared EPEX prices)
+        worker = copy.copy(bess)
+        if netload_json:
+            df = pd.read_json(StringIO(netload_json))
+            df.index = pd.to_datetime(df.index, utc=True).tz_convert("Europe/Vienna")
+            worker.netload_kw = df
+
+        netload_profile = worker.get_netload_profile()
         min_date = netload_profile.index.min().normalize()
         max_date = netload_profile.index.max().normalize()
 
@@ -1213,7 +1245,7 @@ def run_dashboard(
             act_day = min_date if min_date.tzinfo else min_date.tz_localize("Europe/Vienna")
 
         # Batterie-Parameter aktualisieren
-        bess.update_battery_params(
+        worker.update_battery_params(
             capacity_kwh=battery_capacity,
             max_charge_kw=battery_max_charge,
             max_discharge_kw=battery_max_discharge,
@@ -1245,6 +1277,7 @@ def run_dashboard(
 
         if control_algorithm == "pv-ueberschussladen":
             # Build cache key from all parameters that affect PV surplus results
+            _pv_cache = _pv_caches.setdefault(session_id or "", {})
             profile_fp = (
                 str(netload_profile.index.min()),
                 str(netload_profile.index.max()),
@@ -1266,7 +1299,7 @@ def run_dashboard(
                     start=min_date, end=max_date, freq="1D", tz="Europe/Vienna",
                 )
                 for day in all_days:
-                    day_res = bess.run(
+                    day_res = worker.run(
                         act_day=day, **sim_kwargs,
                         control_algorithm="pv-ueberschussladen",
                         soc_init_percent=soc,
@@ -1278,17 +1311,17 @@ def run_dashboard(
 
             lp_results = _pv_cache.get(str(act_day.date()))
             if lp_results is None:
-                lp_results = bess.run(
+                lp_results = worker.run(
                     act_day=act_day, **sim_kwargs,
                     control_algorithm="pv-ueberschussladen",
                 )
         else:
-            lp_results = bess.run(
+            lp_results = worker.run(
                 act_day=act_day, **sim_kwargs,
                 control_algorithm=control_algorithm,
             )
 
-        return build_figure(lp_results), act_day.date(), min_date.date(), max_date.date()
+        return build_figure(lp_results), act_day.date(), min_date.date(), max_date.date(), netload_out
 
     # ── Start-Callback: Gesamtsimulation starten ────────────────────
     @app.callback(
@@ -1316,6 +1349,8 @@ def run_dashboard(
         State("control-algorithm", "value"),
         State("allow-feed-in", "value"),
         State("opt-objective", "value"),
+        State("netload-store", "data"),
+        State("session-id", "data"),
         prevent_initial_call=True,
     )
     def start_total_simulation(
@@ -1339,6 +1374,8 @@ def run_dashboard(
         control_algorithm,
         allow_feed_in_val,
         opt_objective,
+        netload_json,
+        session_id,
     ):
         if not n_clicks or not start_date or not end_date:
             raise PreventUpdate
@@ -1377,9 +1414,16 @@ def run_dashboard(
             "objective": opt_objective or "profit",
         }
 
+        # Netload aus Session-Store statt aus geteilter bess-Instanz
+        if netload_json:
+            df_energy = pd.read_json(StringIO(netload_json))
+            df_energy.index = pd.to_datetime(df_energy.index, utc=True).tz_convert("Europe/Vienna")
+        else:
+            df_energy = bess.get_netload_profile()
+
         thread = threading.Thread(
             target=_run_year_sim_job,
-            args=(start_ts, end_ts, params, bess.get_netload_profile()),
+            args=(start_ts, end_ts, params, df_energy, session_id or ""),
             daemon=True,
         )
         thread.start()
@@ -1458,34 +1502,23 @@ def run_dashboard(
             build_year_figure(result_df),
         )
 
-    # ── Client-side JS for socket.io → dcc.Store bridge ─────────────
-    app.index_string = '''
-<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>{%title%}</title>
-        {%favicon%}
-        {%css%}
-    </head>
-    <body>
-        {%app_entry%}
-        <footer>
-            {%config%}
-            {%scripts%}
-            {%renderer%}
-            <script>
-                document.addEventListener("DOMContentLoaded", function() {
-                    var socket = io();
-                    socket.on("sim_progress", function(data) {
-                        dash_clientside.set_props("ws-sim-progress", {data: data});
-                    });
-                });
-            </script>
-        </footer>
-    </body>
-</html>
-'''
+    # ── Client-side: SocketIO mit Session-Room verbinden ───────────
+    app.clientside_callback(
+        """
+        function(sessionId) {
+            if (!sessionId || window._bessSocket) return window.dash_clientside.no_update;
+            var socket = io();
+            window._bessSocket = socket;
+            socket.emit("join", {session_id: sessionId});
+            socket.on("sim_progress", function(data) {
+                dash_clientside.set_props("ws-sim-progress", {data: data});
+            });
+            return true;
+        }
+        """,
+        Output("socket-init", "data"),
+        Input("session-id", "data"),
+    )
 
     _socketio.run(app.server, debug=True, use_reloader=False, port=port, allow_unsafe_werkzeug=True)
 
