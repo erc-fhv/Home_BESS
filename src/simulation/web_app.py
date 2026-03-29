@@ -753,7 +753,7 @@ def run_dashboard(
                                         dcc.Input(
                                             id="fix-price-buy",
                                             type="number",
-                                            value=12.72, step=0.01,
+                                            value=12.72, step=0.01, min=0,
                                             style={"width": "100%",
                                                    "padding": "6px 10px",
                                                    "borderRadius": "6px",
@@ -768,7 +768,7 @@ def run_dashboard(
                                         dcc.Input(
                                             id="fix-price-sell",
                                             type="number",
-                                            value=9.0, step=0.1,
+                                            value=9.0, step=0.1, min=0,
                                             style={"width": "100%",
                                                    "padding": "6px 10px",
                                                    "borderRadius": "6px",
@@ -789,7 +789,7 @@ def run_dashboard(
                                 dcc.Input(
                                     id="grid-fee",
                                     type="number",
-                                    value=6.0, step=0.1,
+                                    value=6.0, step=0.1, min=0,
                                     style={"width": "100%",
                                            "padding": "6px 10px",
                                            "borderRadius": "6px",
@@ -804,7 +804,7 @@ def run_dashboard(
                                 dcc.Input(
                                     id="vat",
                                     type="number",
-                                    value=20.0, step=0.1,
+                                    value=20.0, step=0.1, min=0,
                                     style={"width": "100%",
                                            "padding": "6px 10px",
                                            "borderRadius": "6px",
@@ -824,7 +824,7 @@ def run_dashboard(
                                 dcc.Input(
                                     id="battery-capacity",
                                     type="number",
-                                    value=30.72, step=0.01,
+                                    value=30.72, step=0.01, min=0,
                                     style={"width": "100%",
                                            "padding": "6px 10px",
                                            "borderRadius": "6px",
@@ -839,7 +839,7 @@ def run_dashboard(
                                 dcc.Input(
                                     id="battery-max-charge",
                                     type="number",
-                                    value=8.0, step=0.1,
+                                    value=8.0, step=0.1, min=0,
                                     style={"width": "100%",
                                            "padding": "6px 10px",
                                            "borderRadius": "6px",
@@ -854,7 +854,7 @@ def run_dashboard(
                                 dcc.Input(
                                     id="battery-max-discharge",
                                     type="number",
-                                    value=8.0, step=0.1,
+                                    value=8.0, step=0.1, min=0,
                                     style={"width": "100%",
                                            "padding": "6px 10px",
                                            "borderRadius": "6px",
@@ -869,7 +869,7 @@ def run_dashboard(
                                 dcc.Input(
                                     id="battery-soc-min",
                                     type="number",
-                                    value=10.0, step=1.0,
+                                    value=10.0, step=1.0, min=0, max=100,
                                     style={"width": "100%",
                                            "padding": "6px 10px",
                                            "borderRadius": "6px",
@@ -884,7 +884,7 @@ def run_dashboard(
                                 dcc.Input(
                                     id="battery-soc-final",
                                     type="number",
-                                    value=50.0, step=1.0,
+                                    value=50.0, step=1.0, min=0, max=100,
                                     style={"width": "100%",
                                            "padding": "6px 10px",
                                            "borderRadius": "6px",
@@ -1241,7 +1241,7 @@ def run_dashboard(
                 # Recompute full dataset with SOC carry-over
                 _pv_cache.clear()
                 _pv_cache["params_key"] = params_key
-                soc = battery_soc_final or 50.0
+                soc = battery_soc_final or 0.0
                 all_days = pd.date_range(
                     start=min_date, end=max_date, freq="1D", tz="Europe/Vienna",
                 )
@@ -1341,13 +1341,13 @@ def run_dashboard(
             "vat": vat_fraction,
             "fix_price_buy": fix_price_buy_eur,
             "fix_price_sell": fix_price_sell_eur,
-            "battery_capacity": battery_capacity or 30.72,
-            "battery_max_charge": battery_max_charge or 8.0,
-            "battery_max_discharge": battery_max_discharge or 8.0,
-            "battery_soc_min": battery_soc_min or 10.0,
-            "battery_soc_final": battery_soc_final or 50.0,
-            "battery_eta_charge": battery_eta_charge or 0.936,
-            "battery_eta_discharge": battery_eta_discharge or 0.936,
+            "battery_capacity": battery_capacity or 0.0,
+            "battery_max_charge": battery_max_charge or 0.0,
+            "battery_max_discharge": battery_max_discharge or 0.0,
+            "battery_soc_min": battery_soc_min or 0.0,
+            "battery_soc_final": battery_soc_final or 0.0,
+            "battery_eta_charge": battery_eta_charge or 0.0,
+            "battery_eta_discharge": battery_eta_discharge or 0.0,
             "control_algorithm": control_algorithm or "model-predictive-control",
         }
 

@@ -55,7 +55,12 @@ class Bess:
         ) -> dict[str, pd.Series]:
         """Run the BESS optimization for a given day and return the results as a dictionary."""
 
-        if control_algorithm != "no-control":
+        # Treat zero capacity as "no battery"
+        effective_algorithm = control_algorithm
+        if control_algorithm != "no-control" and not self.capacity_kwh:
+            effective_algorithm = "no-control"
+
+        if effective_algorithm != "no-control":
             assert self.capacity_kwh is not None, "Battery capacity must be set."
             assert self.max_charge_kw is not None, "Max charge power must be set."
             assert self.max_discharge_kw is not None, "Max discharge power must be set."
@@ -87,14 +92,14 @@ class Bess:
 
         my_optimizer = BessOptimizer()
 
-        if control_algorithm == "no-control":
+        if effective_algorithm == "no-control":
             lp_results = my_optimizer.no_optimize(
                 price_sell_eur_kwh=self.price_sell_eur_kwh,
                 price_buy_eur_kwh=self.price_buy_eur_kwh,
                 net_load_kw=self.net_load_of_one_day_kw,
                 verbose=verbose,
             )
-        elif control_algorithm == "pv-ueberschussladen":
+        elif effective_algorithm == "pv-ueberschussladen":
             lp_results = my_optimizer.pv_surplus_charge(
                 price_sell_eur_kwh=self.price_sell_eur_kwh,
                 price_buy_eur_kwh=self.price_buy_eur_kwh,
