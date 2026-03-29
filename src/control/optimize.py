@@ -21,6 +21,8 @@ class BessOptimizer:
         eta_discharge: float,
         soc_max_percent: float = 100.0,
         verbose: bool = False,
+        allow_battery_feed_in: bool = True,
+        objective: str = "profit",
         ) -> dict[str, pd.Series]:
         """
         Optimizes the BESS operation for a given day using Mixed-Integer Linear Programming (MILP).
@@ -72,12 +74,29 @@ class BessOptimizer:
                 net_load_kw.iloc[p] + p_sell_kw[p] + p_ch_kw[p]
             )
 
-        # Zielfunktion: Erlös – Kosten
-        model += pulp.lpSum(
-            (price_sell_eur_kwh.iloc[p] * p_sell_kw[p]
-            - price_buy_eur_kwh.iloc[p] * p_buy_kw[p]) * delta_t
-            for p in P
-        )
+        # Batterie-Einspeisung verbieten: Verkauf nur aus (vorhergesagtem!) PV-Ueberschuss
+        if not allow_battery_feed_in:
+            for p in P:
+                pv_surplus = max(0.0, -float(net_load_kw.iloc[p]))
+                model += p_sell_kw[p] <= pv_surplus
+
+        # Zielfunktion
+        if objective == "autarky":
+            # Maximiere Autarkie = minimiere Netzbezug
+            model += -pulp.lpSum(p_buy_kw[p] * delta_t for p in P)
+        elif objective == "peak_shaving":
+            # Minimiere maximale Netzspitze (Bezug)
+            p_peak = pulp.LpVariable("p_peak", 0)
+            for p in P:
+                model += p_buy_kw[p] <= p_peak
+            model += -p_peak
+        else:
+            # Profit: Erlös – Kosten
+            model += pulp.lpSum(
+                (price_sell_eur_kwh.iloc[p] * p_sell_kw[p]
+                - price_buy_eur_kwh.iloc[p] * p_buy_kw[p]) * delta_t
+                for p in P
+            )
 
         model.solve(pulp.PULP_CBC_CMD(msg=False))
         if verbose:
@@ -95,7 +114,11 @@ class BessOptimizer:
                 index=time_periods),
             "milp_status": pulp.LpStatus[model.status],
             "date": pd.Timestamp(time_points[0]).normalize().date(),
-            "profit_eur": float(pulp.value(model.objective) or 0.0),
+            "profit_eur": float(sum(
+                (price_sell_eur_kwh.iloc[p] * (p_sell_kw[p].value() or 0.0)
+                 - price_buy_eur_kwh.iloc[p] * (p_buy_kw[p].value() or 0.0)) * delta_t
+                for p in P
+            )),
             "p_buy_kw": pd.Series([p_buy_kw[p].value() for p in P], index=time_periods),
             "p_sell_kw": pd.Series([p_sell_kw[p].value() for p in P], index=time_periods),
         }

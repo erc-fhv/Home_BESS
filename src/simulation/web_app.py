@@ -128,6 +128,8 @@ def _run_year_sim_job(
             verbose=False,
             progress_callback=_on_progress,
             control_algorithm=params.get("control_algorithm", "model-predictive-control"),
+            allow_feed_in=params.get("allow_feed_in", True),
+            objective=params.get("objective", "profit"),
         )
 
         done_state = {
@@ -664,7 +666,7 @@ def run_dashboard(
                                         "label": " Batterie-Einspeisung verbieten",
                                         "value": "yes",
                                     }],
-                                    value=["no"],
+                                    value=[],
                                     labelStyle={
                                         "fontSize": "14px",
                                         "cursor": "pointer"},
@@ -1162,6 +1164,8 @@ def run_dashboard(
         Input("battery-eta-charge", "value"),
         Input("battery-eta-discharge", "value"),
         Input("control-algorithm", "value"),
+        Input("allow-feed-in", "value"),
+        Input("opt-objective", "value"),
         State("input-mode", "value"),
         prevent_initial_call=True,
     )
@@ -1171,7 +1175,7 @@ def run_dashboard(
                      fix_price_buy_cent, fix_price_sell_cent,
                      battery_capacity, battery_max_charge, battery_max_discharge,
                      battery_soc_min, battery_soc_final, battery_eta_charge, battery_eta_discharge,
-                     control_algorithm, input_mode):
+                     control_algorithm, allow_feed_in_val, opt_objective, input_mode):
 
         ctx = callback_context
         triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
@@ -1225,6 +1229,8 @@ def run_dashboard(
             fix_price_buy_eur_kwh=fix_price_buy_eur,
             fix_price_sell_eur_kwh=fix_price_sell_eur,
             verbose=False,
+            allow_feed_in="yes" not in (allow_feed_in_val or []),
+            objective=opt_objective or "profit",
         )
 
         if control_algorithm == "pv-ueberschussladen":
@@ -1298,6 +1304,8 @@ def run_dashboard(
         State("battery-eta-charge", "value"),
         State("battery-eta-discharge", "value"),
         State("control-algorithm", "value"),
+        State("allow-feed-in", "value"),
+        State("opt-objective", "value"),
         prevent_initial_call=True,
     )
     def start_total_simulation(
@@ -1319,6 +1327,8 @@ def run_dashboard(
         battery_eta_charge,
         battery_eta_discharge,
         control_algorithm,
+        allow_feed_in_val,
+        opt_objective,
     ):
         if not n_clicks or not start_date or not end_date:
             raise PreventUpdate
@@ -1353,6 +1363,8 @@ def run_dashboard(
             "battery_eta_charge": battery_eta_charge or 0.0,
             "battery_eta_discharge": battery_eta_discharge or 0.0,
             "control_algorithm": control_algorithm or "model-predictive-control",
+            "allow_feed_in": "yes" not in (allow_feed_in_val or []),
+            "objective": opt_objective or "profit",
         }
 
         thread = threading.Thread(
