@@ -88,8 +88,10 @@ def _run_year_sim_job(
             delta_t = 0.25  # 15-min intervals in hours
             p_buy = day_metrics.get("p_buy_kw")
             p_sell = day_metrics.get("p_sell_kw")
+            p_ch = day_metrics.get("p_ch_kw")
             grid_import_kwh = float(p_buy.sum() * delta_t) if isinstance(p_buy, pd.Series) else 0.0
             grid_export_kwh = float(p_sell.sum() * delta_t) if isinstance(p_sell, pd.Series) else 0.0
+            battery_throughput_kwh = float(p_ch.sum() * delta_t) if isinstance(p_ch, pd.Series) else 0.0
             # Keep only JSON-serialisable (scalar) values
             safe_metrics = {
                 k: v for k, v in day_metrics.items()
@@ -99,6 +101,7 @@ def _run_year_sim_job(
                 safe_metrics["date"] = str(safe_metrics["date"])
             safe_metrics["grid_import_kwh"] = grid_import_kwh
             safe_metrics["grid_export_kwh"] = grid_export_kwh
+            safe_metrics["battery_throughput_kwh"] = battery_throughput_kwh
             rows.append(safe_metrics)
             progress = int(round(100.0 * done_days / total_days_)) if total_days_ > 0 else 100
             state = {
@@ -135,6 +138,7 @@ def _run_year_sim_job(
             "last_day": rows[-1]["date"] if rows else None,
             "rows": rows,
             "error": None,
+            "battery_capacity": params.get("battery_capacity", 0.0),
         }
         if _socketio is not None:
             _socketio.emit("sim_progress", done_state)
@@ -1415,10 +1419,14 @@ def run_dashboard(
         year_profit = float(result_df["profit_eur"].sum()) if not result_df.empty else 0.0
         import_kwh = float(result_df["grid_import_kwh"].sum()) if not result_df.empty else 0.0
         export_kwh = float(result_df["grid_export_kwh"].sum()) if not result_df.empty else 0.0
+        throughput_kwh = float(result_df["battery_throughput_kwh"].sum()) if (not result_df.empty and "battery_throughput_kwh" in result_df.columns) else 0.0
+        battery_capacity = float(data.get("battery_capacity", 0.0))
+        cycles = throughput_kwh / battery_capacity if battery_capacity > 0 else 0.0
         summary = (
             f"Jahresgewinn: {year_profit:.2f} EUR | "
             f"Netzbezug: {import_kwh:.1f} kWh | "
-            f"Einspeisung: {export_kwh:.1f} kWh"
+            f"Einspeisung: {export_kwh:.1f} kWh | "
+            f"Batteriezyklen: {cycles:.0f}"
         )
 
         return (
