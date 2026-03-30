@@ -1,6 +1,66 @@
 # Home_BESS
 
-## Sytemd service file for running the MPC controller on an server:
+## Run the Simulation Web App
+
+Create the following systemd service file:
+```
+sudo nano /etc/systemd/system/web-app.service
+```
+
+Add this content to the file:
+
+```ini
+[Unit]
+Description=Homebatterie Webservice (Gunicorn)
+After=network.target
+
+[Service]
+# User and group to run as (change if needed)
+User=molu
+Group=molu
+
+# Working directory of the app
+WorkingDirectory=/home/molu/repos/Home_BESS/src/simulation
+
+# Command to start Gunicorn
+ExecStart=/home/molu/repos/Home_BESS/.venv/bin/gunicorn web_app:application --worker-class gthread --workers 1 --threads 4 -b 0.0.0.0:5000
+
+# Restart policy
+Restart=always
+RestartSec=5
+
+# Environment variables (optional)
+# Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
+
+# If needed improve, see docs: https://docs.gunicorn.org/en/stable/deploy.html
+```
+
+Enable and start the service:
+```
+sudo systemctl daemon-reload
+sudo systemctl enable web-app.service
+sudo systemctl start web-app.service
+```
+
+Restart the service after code changes:
+```
+sudo systemctl restart web-app.service
+```
+
+View the logs:
+```
+sudo journalctl -u web-app.service -f
+```
+
+View the current status:
+```
+sudo systemctl status web-app.service
+```
+
+## Systemd service file for running the MPC controller on a server:
 
 Create the following file:
 ```
