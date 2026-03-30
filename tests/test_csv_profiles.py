@@ -2,8 +2,9 @@
 
 Covers:
 - netload_profile_1.csv  (simple CSV with header, kW values, Vienna TZ)
-- netload_profile_2.csv  (high-frequency format, no header, ISO8601+Z, Watt)
+- netload_profile_2.csv  (irregular timestamps, no header, ISO8601+Z, Watt)
 - load_profile_1.csv + pv_profile_1.csv  (VKW Smartmeter format, semicolons, Latin-1)
+- load_profile_2.csv + pv_profile_2.csv  (irregular timestamps, no header, Watt, sparse PV)
 """
 
 import base64
@@ -140,6 +141,72 @@ class TestVKWProfiles:
 
     def test_load_values_plausible(self, df_load):
         assert df_load["value_kw"].min() >= -1, "Load should not be strongly negative"
+        assert df_load["value_kw"].max() <= 50
+
+    def test_pv_values_plausible(self, df_pv):
+        assert df_pv["value_kw"].min() >= -1
+        assert df_pv["value_kw"].max() <= 50
+
+
+# ── load_profile_2.csv + pv_profile_2.csv (irregular timestamps, Watt) ──────
+
+class TestIrregularProfiles:
+    @pytest.fixture()
+    def df_load(self):
+        contents = _to_upload_contents(TESTS_DIR / "load_profile_2.csv")
+        return parse_csv(contents)
+
+    @pytest.fixture()
+    def df_pv(self):
+        contents = _to_upload_contents(TESTS_DIR / "pv_profile_2.csv")
+        return parse_csv(contents)
+
+    def test_load_not_empty(self, df_load):
+        assert not df_load.empty
+
+    def test_pv_not_empty(self, df_pv):
+        assert not df_pv.empty
+
+    def test_load_has_value_kw(self, df_load):
+        assert "value_kw" in df_load.columns
+
+    def test_pv_has_value_kw(self, df_pv):
+        assert "value_kw" in df_pv.columns
+
+    def test_load_tz_vienna(self, df_load):
+        assert str(df_load.index.tz) == "Europe/Vienna"
+
+    def test_pv_tz_vienna(self, df_pv):
+        assert str(df_pv.index.tz) == "Europe/Vienna"
+
+    def test_load_15min_frequency(self, df_load):
+        freq = df_load.index.to_series().diff().dropna().median()
+        assert freq == pd.Timedelta(minutes=15)
+
+    def test_pv_15min_frequency(self, df_pv):
+        freq = df_pv.index.to_series().diff().dropna().median()
+        assert freq == pd.Timedelta(minutes=15)
+
+    def test_load_values_in_kw(self, df_load):
+        assert df_load["value_kw"].max() < 50, "Values seem to still be in Watts"
+
+    def test_pv_values_in_kw(self, df_pv):
+        assert df_pv["value_kw"].max() < 50, "Values seem to still be in Watts"
+
+    def test_indexes_match(self, df_load, df_pv):
+        assert df_load.index.equals(df_pv.index), \
+            "Load and PV profiles must cover the same time range"
+
+    def test_no_nan_values(self, df_load, df_pv):
+        assert not df_load["value_kw"].isna().any(), "Load has NaN values"
+        assert not df_pv["value_kw"].isna().any(), "PV has NaN values"
+
+    def test_net_load_computable(self, df_load, df_pv):
+        net = df_load["value_kw"] - df_pv["value_kw"]
+        assert not net.isna().any(), "Net load has NaNs after subtraction"
+
+    def test_load_values_plausible(self, df_load):
+        assert df_load["value_kw"].min() >= -1
         assert df_load["value_kw"].max() <= 50
 
     def test_pv_values_plausible(self, df_pv):

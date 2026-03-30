@@ -529,10 +529,10 @@ def parse_csv(contents: str) -> pd.DataFrame:
         # Auf 15-min resampeln falls nötig
         median_freq = df.index.to_series().diff().dropna().median()
         if median_freq != pd.Timedelta(minutes=15):
-            df = df[["value_kw"]].resample("15min").mean()
+            df = df[["value_kw"]].resample("15min").mean().fillna(0.0)
 
         # Watt → kW falls Werte zu groß für kW
-        if df["value_kw"].abs().median() > 100:
+        if df["value_kw"].abs().quantile(0.75) > 100:
             df["value_kw"] = df["value_kw"] / 1000.0
 
     # Keine Zukunfts-Timestamps (heutiger Tag ist noch unvollständig)
