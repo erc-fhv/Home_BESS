@@ -129,7 +129,7 @@ class Bess:
                 soc_min_percent=self.soc_min_percent,
                 eta_charge=self.eta_charge,
                 eta_discharge=self.eta_discharge,
-                soc_max_percent=self.soc_final_percent,
+                soc_max_percent=100.0,
                 verbose=verbose,
                 allow_battery_feed_in=allow_feed_in,
                 objective=objective,

@@ -45,7 +45,9 @@ class BessOptimizer:
         # Entscheidungsvariablen
         p_ch_kw   = pulp.LpVariable.dicts("p_ch", P, 0, max_charge_kw)
         p_dis_kw  = pulp.LpVariable.dicts("p_dis", P, 0, max_discharge_kw)
-        soc_kwh    = pulp.LpVariable.dicts("soc", T, soc_min_percent, soc_max_percent)
+        soc_min_kwh = soc_min_percent * capacity_kwh / 100.0
+        soc_max_kwh = soc_max_percent * capacity_kwh / 100.0
+        soc_kwh    = pulp.LpVariable.dicts("soc", T, soc_min_kwh, soc_max_kwh)
         p_sell_kw = pulp.LpVariable.dicts("p_sell", P, 0)
         p_buy_kw  = pulp.LpVariable.dicts("p_buy", P, 0)
         y = pulp.LpVariable.dicts("y", P, 0, 1, cat="Binary")   # Lade-/Entlade-Exklusivität
