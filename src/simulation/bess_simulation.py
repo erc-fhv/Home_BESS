@@ -26,14 +26,15 @@ class Bess:
         file_path = Path(__file__).parent / "data" / "example_household_without_battery.csv"
         self.netload_kw = pd.read_csv(file_path, index_col=0)
         self.netload_kw.index = pd.to_datetime(self.netload_kw.index, utc=True)
-        self.netload_kw.index = self.netload_kw.index.tz_convert("Europe/Vienna")
+        self.netload_kw.index = self.netload_kw.index.tz_convert("Europe/Vienna").as_unit("us")
 
     def set_netload_profile(self, netload_kw: pd.DataFrame) -> None:
         """Set the netload profile for the simulation."""
         assert isinstance(netload_kw.index, pd.DatetimeIndex), "index must be datetime index."
         assert netload_kw.index.tz is not None, "Netload index must be timezone-aware."
         assert netload_kw.index.tz.zone == "Europe/Vienna", "Netload index must be 'Vienna' tz."
-        self.netload_kw = netload_kw
+        self.netload_kw = netload_kw.copy()
+        self.netload_kw.index = self.netload_kw.index.as_unit("us")
 
     def get_netload_profile(self) -> pd.DataFrame:
         """Returns the currently set netload profile."""

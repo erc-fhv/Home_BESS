@@ -1270,7 +1270,7 @@ def run_dashboard(
         worker = copy.copy(bess)
         if netload_json:
             df = pd.read_json(StringIO(netload_json))
-            df.index = pd.to_datetime(df.index, utc=True).tz_convert("Europe/Vienna")
+            df.index = pd.to_datetime(df.index, utc=True).tz_convert("Europe/Vienna").as_unit("us")
             worker.netload_kw = df
 
         netload_profile = worker.get_netload_profile()
@@ -1458,7 +1458,7 @@ def run_dashboard(
         # Netload aus Session-Store statt aus geteilter bess-Instanz
         if netload_json:
             df_energy = pd.read_json(StringIO(netload_json))
-            df_energy.index = pd.to_datetime(df_energy.index, utc=True).tz_convert("Europe/Vienna")
+            df_energy.index = pd.to_datetime(df_energy.index, utc=True).tz_convert("Europe/Vienna").as_unit("us")
         else:
             df_energy = bess.get_netload_profile()
 
