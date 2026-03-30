@@ -558,7 +558,7 @@ def run_dashboard(
             "https://cdn.socket.io/4.7.5/socket.io.min.js",
         ],
     )
-    _socketio = SocketIO(app.server, async_mode="threading", cors_allowed_origins="*")
+    _socketio = SocketIO(app.server, async_mode="eventlet", cors_allowed_origins="*")
 
     @_socketio.on("join")
     def _on_join(data):
