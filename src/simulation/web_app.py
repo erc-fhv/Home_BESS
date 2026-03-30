@@ -457,21 +457,19 @@ def parse_csv(contents: str) -> pd.DataFrame:
 
     Erkennt automatisch:
     - VKW-Smartmeter-Format (4 Header-Zeilen, Semikolon, Latin-1)
-    - Einfaches CSV (1 Header-Zeile, erste Spalte=Datetime, zweite=kW)
+    - Generisches CSV (mit/ohne Header, beliebiges Zeitraster)
+      → wird bei Bedarf auf 15-Minuten-Intervalle resampelt,
+        Watt-Werte (Median > 100) automatisch in kW umgerechnet.
     """
     _, content_string = contents.split(",", maxsplit=1)
     raw = base64.b64decode(content_string)
 
-    # Versuche Latin-1 (VKW) und UTF-8
     try:
         decoded = raw.decode("utf-8")
     except UnicodeDecodeError:
         decoded = raw.decode("latin-1")
 
     lines = decoded.strip().splitlines()
-
-    # VKW-Format: erste Zeile beginnt nicht mit typischen CSV-Headern
-    # und enthält Semikolons in den Datenzeilen
     is_vkw = ";" in lines[min(4, len(lines) - 1)] and "Messwert" in decoded
 
     if is_vkw:
@@ -486,17 +484,60 @@ def parse_csv(contents: str) -> pd.DataFrame:
         df = df.set_index("ts")
         df["value_kw"] = pd.to_numeric(
             df["Messwert"], errors="coerce").fillna(0.0)
+
     else:
-        # Einfaches CSV: Spalte 1 = Datetime, Spalte 2 = Wert in kW
-        df = pd.read_csv(StringIO(decoded))
-        df.columns = df.columns.str.strip()
-        ts_col = df.columns[0]
-        val_col = df.columns[1]
+        # Header-Erkennung: zweite Spalte der ersten Zeile numerisch → kein Header
+        first_line = lines[0] if lines else ""
+        first_val = first_line.split(",")[1].strip() if "," in first_line else ""
+        has_header = not first_val.lstrip("-").replace(".", "", 1).isdigit()
+
+        if has_header:
+            df = pd.read_csv(StringIO(decoded))
+            df.columns = df.columns.str.strip()
+            # Auto-detect timestamp column (first column parseable as datetime)
+            ts_col = None
+            for col in df.columns:
+                try:
+                    pd.to_datetime(df[col].head(5))
+                    ts_col = col
+                    break
+                except (ValueError, TypeError):
+                    continue
+            if ts_col is None:
+                raise ValueError("Keine Timestamp-Spalte erkannt")
+            # Value column: first numeric column that isn't the timestamp
+            val_col = None
+            for col in df.columns:
+                if col == ts_col:
+                    continue
+                if pd.to_numeric(df[col], errors="coerce").notna().mean() > 0.5:
+                    val_col = col
+                    break
+            if val_col is None:
+                raise ValueError("Keine numerische Wert-Spalte erkannt")
+        else:
+            df = pd.read_csv(StringIO(decoded), header=None,
+                             names=["ts", "value"])
+            ts_col, val_col = "ts", "value"
+
         df["ts"] = pd.to_datetime(df[ts_col], utc=True).dt.tz_convert(
             "Europe/Vienna")
         df = df.set_index("ts")
         df["value_kw"] = pd.to_numeric(
             df[val_col], errors="coerce").fillna(0.0)
+
+        # Auf 15-min resampeln falls nötig
+        median_freq = df.index.to_series().diff().dropna().median()
+        if median_freq != pd.Timedelta(minutes=15):
+            df = df[["value_kw"]].resample("15min").mean()
+
+        # Watt → kW falls Werte zu groß für kW
+        if df["value_kw"].abs().median() > 100:
+            df["value_kw"] = df["value_kw"] / 1000.0
+
+    # Keine Zukunfts-Timestamps (heutiger Tag ist noch unvollständig)
+    now = pd.Timestamp.now(tz="Europe/Vienna")
+    df = df[df.index < now.normalize()]
 
     return df[["value_kw"]]
 
@@ -1240,6 +1281,9 @@ def run_dashboard(
         # Bei neuem Upload auf ersten verfuegbaren Tag springen
         if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
             act_day = min_date if min_date.tzinfo else min_date.tz_localize("Europe/Vienna")
+        # Sicherstellen, dass act_day im verfügbaren Bereich liegt
+        act_day = max(act_day, min_date)
+        act_day = min(act_day, max_date)
 
         # Batterie-Parameter aktualisieren
         worker.update_battery_params(

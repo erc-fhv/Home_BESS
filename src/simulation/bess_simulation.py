@@ -73,7 +73,7 @@ class Bess:
 
         act_range = pd.date_range(
             start=act_day,
-            end=act_day + pd.Timedelta(days=1),
+            end=act_day + pd.DateOffset(days=1),
             freq='15min',
             tz="Europe/Vienna",
             inclusive="left",
@@ -233,19 +233,19 @@ class Bess:
     def _load_epex_prices(self) -> None:
         """EPEX-Preise aus CSV laden und fehlende Daten via API nachladen."""
         file_path = Path(__file__).parent / "data" / "epex_prices.csv"
-        now = pd.Timestamp.now(tz="Europe/Vienna").floor("1D")
+        now = pd.Timestamp.now(tz="Europe/Vienna")
 
         if file_path.exists():
             df_prices = pd.read_csv(file_path, index_col=0)
             df_prices.index = pd.to_datetime(df_prices.index, utc=True)
             df_prices.index = df_prices.index.tz_convert("Europe/Vienna")
-            last_ts = df_prices.index.max().floor("1D")
+            last_ts = df_prices.index.max()
 
-            if last_ts < now:
+            if (last_ts + pd.Timedelta(minutes=15)) < now:
                 new_prices = DayAheadPrice.get_epex_prices(
                     country_code="AT",
                     start_date=last_ts,
-                    end_date=now,
+                    end_date=now + pd.Timedelta(days=1),
                 )
                 if not new_prices.empty:
                     df_new = new_prices.to_frame(name="day_ahead_price_eur_kWh")

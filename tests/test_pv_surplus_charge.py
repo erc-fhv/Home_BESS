@@ -29,7 +29,7 @@ def test_pv_surplus_charge():
     tol = 1e-9
 
     act_range = pd.date_range(
-        start=day, end=day + pd.Timedelta(days=1),
+        start=day, end=day + pd.DateOffset(days=1),
         freq="15min", tz="Europe/Vienna", inclusive="left",
     )
     net_load_kw = netload_df.loc[act_range]["net_load_kw"]
