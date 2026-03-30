@@ -28,7 +28,7 @@ def test_first_main_loop_run():
     assert isinstance(act_soc, (int, float)), f"Expected act_soc to be a number, got {type(act_soc)}"
     assert 0 <= act_soc <= 100, f"Expected act_soc to be between 0 and 100, got {act_soc}"
 
-    store_to_file = Path(__file__).parent / "test_day_ahead_prices.csv"
+    store_to_file = Path(__file__).parent / "data" / "test_day_ahead_prices.csv"
     price_sell_eur_kwh, price_buy_eur_kwh = DayAheadPrice.get_prices("vkw_dyn", store_to_file=store_to_file)
     assert price_sell_eur_kwh.index.equals(price_buy_eur_kwh.index), f"Got {price_sell_eur_kwh.index} and {price_buy_eur_kwh.index}"
     now = pd.Timestamp.now(tz=price_sell_eur_kwh.index.tz)

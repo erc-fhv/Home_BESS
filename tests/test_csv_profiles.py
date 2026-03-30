@@ -16,7 +16,7 @@ import pytest
 from simulation.web_app import parse_csv
 
 
-TESTS_DIR = Path(__file__).parent
+TESTS_DIR = Path(__file__).parent / "data"
 
 
 def _to_upload_contents(file_path: Path) -> str:
