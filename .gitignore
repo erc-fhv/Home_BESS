@@ -11,3 +11,4 @@ pyproject.toml
 **.sh
 src/simulation/data/epex_prices.csv
 tests/test_day_ahead_prices.csv
+src/simulation/data/epex_prices.csv

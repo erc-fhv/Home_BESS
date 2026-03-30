@@ -678,7 +678,7 @@ def run_dashboard(
                                 dcc.Checklist(
                                     id="allow-feed-in",
                                     options=[{
-                                        "label": " Batterie-Einspeisung verbieten",
+                                        "label": " Batterie-Einspeisung vermeiden",
                                         "value": "yes",
                                     }],
                                     value=[],
@@ -1120,7 +1120,7 @@ def run_dashboard(
         disabled = algorithm != "model-predictive-control"
         no_battery = algorithm == "no-control"
         feed_in_opts = [{
-            "label": " Batterie-Einspeisung verbieten",
+            "label": " Batterie-Einspeisung vermeiden",
             "value": "yes",
             "disabled": disabled,
         }]
