@@ -7,7 +7,6 @@ import uuid
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import pulp
 from dash import Dash, dcc, html, Input, Output, callback_context, State, no_update
 from dash.exceptions import PreventUpdate
 from flask_socketio import SocketIO, join_room
@@ -56,7 +55,6 @@ BTN = {
 }
 
 
-# module-level SocketIO instance, initialised in run_dashboard()
 _socketio: SocketIO | None = None
 
 
@@ -508,11 +506,9 @@ def run_dashboard(
     use_dynamic_prices: bool = True,
     port: int = 8051,
     debug: bool = False,
-) -> None:
+    ) -> Dash:
 
     global _socketio
-
-    print(f"Dash app running on http://127.0.0.1:{port}")
 
     app = Dash(
         __name__,
@@ -1521,10 +1517,11 @@ def run_dashboard(
         Input("session-id", "data"),
     )
 
-    _socketio.run(app.server, debug=debug, use_reloader=False, port=port,
-                  allow_unsafe_werkzeug=True)
+    # Für Gunicorn: kein direkter Start, sondern Rückgabe der App
+    return app
 
 
-if __name__ == "__main__":
-    bess = Bess()
-    run_dashboard(bess)
+# Initialisiere App und exportiere WSGI-kompatibles Objekt für Gunicorn
+bess = Bess()
+app = run_dashboard(bess)
+application = app.server
