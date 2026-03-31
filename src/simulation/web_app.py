@@ -505,9 +505,9 @@ def parse_csv(contents: str) -> pd.DataFrame:
         decoded = raw.decode("latin-1")
 
     lines = decoded.strip().splitlines()
-    is_messwert = "Messwert" in decoded and "Beginn der Messung" in decoded
+    is_vkw_profile = "Messwert" in decoded and "Beginn der Messung" in decoded
 
-    if is_messwert:
+    if is_vkw_profile:
         # Header-Zeile suchen (funktioniert für 1 oder 4 Metadaten-Zeilen)
         header_row = next(
             (i for i, l in enumerate(lines) if l.strip().startswith("Beginn der Messung")),

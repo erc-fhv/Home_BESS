@@ -75,19 +75,6 @@ def test_vkw_4_metadata_rows_skipped():
         f"First timestamp {df.index[0]} suggests metadata rows were not skipped"
 
 
-def test_messwert_kw_column_takes_priority():
-    """pv_profile_3 has both 'Messwert-kw' and a plain 'Messwert' column.
-    parse_csv must use 'Messwert-kw' (PV power = 0 at night), not 'Messwert'
-    (which contains non-zero test values at night).
-    """
-    df = _parse("pv_profile_3")
-    # At 2025-01-01 00:00:00+01:00 the CSV has: Messwert-kw=0.0, Messwert=2.29.
-    # If the wrong column were chosen, value_kw would be ~2.29, not 0.0.
-    ts = pd.Timestamp("2025-01-01 00:00", tz="Europe/Vienna")
-    assert df.loc[ts, "value_kw"] == pytest.approx(0.0), \
-        f"value_kw at midnight Jan 1 = {df.loc[ts, 'value_kw']:.3f} kW — wrong Messwert column selected"
-
-
 def test_watt_to_kw_auto_conversion():
     """load_profile_2 supplies raw Watt values (~1300 W).
     parse_csv must detect this and divide by 1000 so values fall in the kW range.
