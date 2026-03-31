@@ -160,6 +160,26 @@ def _run_year_sim_job(
             _socketio.emit("sim_progress", error_state, room=session_id)
 
 
+def _make_error_figure(message: str) -> go.Figure:
+    """Returns a blank figure with a centered error message."""
+    fig = go.Figure()
+    fig.update_layout(
+        template="plotly_white",
+        paper_bgcolor="#f8fafc",
+        plot_bgcolor="#ffffff",
+        height=200,
+        margin=dict(t=20, b=20),
+        annotations=[dict(
+            text=message,
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=14, color="#dc2626"),
+            align="center",
+        )],
+    )
+    return fig
+
+
 def build_figure(lp_results: dict) -> go.Figure:
     fig = make_subplots(
         rows=5,
@@ -323,6 +343,21 @@ def build_figure(lp_results: dict) -> go.Figure:
     fig.update_yaxes(title_text="SOC [%]", range=[0, 100], row=3, col=1)
     fig.update_yaxes(title_text="Leistung [kW]", row=4, col=1)
     fig.update_yaxes(title_text="Leistung [kW]", row=5, col=1)
+
+    status = lp_results.get("milp_status", "")
+    if status not in ("Optimal", "No battery", "PV surplus"):
+        fig.add_annotation(
+            x=0.5, y=0.5,
+            xref="paper", yref="paper",
+            text=f"MILP-Optimierung nicht lösbar: {status}<br>"
+                 "Bitte Batterieparameter oder Preismodell prüfen.",
+            showarrow=False,
+            align="center",
+            font=dict(size=13, color="#dc2626"),
+            bgcolor="rgba(254,226,226,0.9)",
+            bordercolor="#dc2626",
+            borderwidth=1,
+        )
 
     try:
         objective_value = lp_results["profit_eur"]
@@ -1258,19 +1293,25 @@ def run_dashboard(
 
         # Nur bei Upload neu parsen, nicht bei Datumswechsel
         if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
-            if input_mode == "load_gen":
-                if load_contents and gen_contents:
-                    df_load = parse_csv(load_contents)
-                    df_gen = parse_csv(gen_contents)
-                    net = df_load["value_kw"] - df_gen["value_kw"]
-                    df_net = pd.DataFrame({"net_load_kw": net})
+            try:
+                if input_mode == "load_gen":
+                    if load_contents and gen_contents:
+                        df_load = parse_csv(load_contents)
+                        df_gen = parse_csv(gen_contents)
+                        net = df_load["value_kw"] - df_gen["value_kw"]
+                        df_net = pd.DataFrame({"net_load_kw": net})
+                        netload_json = df_net.to_json(date_format="iso")
+                        netload_out = netload_json
+                elif residual_contents:
+                    df_res = parse_csv(residual_contents)
+                    df_net = pd.DataFrame({"net_load_kw": df_res["value_kw"]})
                     netload_json = df_net.to_json(date_format="iso")
                     netload_out = netload_json
-            elif residual_contents:
-                df_res = parse_csv(residual_contents)
-                df_net = pd.DataFrame({"net_load_kw": df_res["value_kw"]})
-                netload_json = df_net.to_json(date_format="iso")
-                netload_out = netload_json
+            except Exception as exc:
+                return (
+                    _make_error_figure(f"CSV konnte nicht eingelesen werden:<br>{exc}"),
+                    no_update, no_update, no_update, no_update,
+                )
 
         # Worker-Bess (per-Request, shared EPEX prices)
         worker = copy.copy(bess)
@@ -1290,20 +1331,13 @@ def run_dashboard(
             max_date = max_date - pd.Timedelta(days=1)
 
         if max_date < min_date:
-            err_fig = go.Figure()
-            err_fig.update_layout(
-                template="plotly_white",
-                paper_bgcolor="#f8fafc",
-                annotations=[dict(
-                    text="Keine vollständigen Tage im Datensatz verfügbar.<br>"
-                         "Bitte eine CSV mit mindestens einem vollständigen Tag (00:00-23:45) hochladen.",
-                    xref="paper", yref="paper",
-                    x=0.5, y=0.5, showarrow=False,
-                    font=dict(size=14, color=COLOR["text_light"]),
-                    align="center",
-                )],
+            return (
+                _make_error_figure(
+                    "Keine vollständigen Tage im Datensatz verfügbar.<br>"
+                    "Bitte eine CSV mit mindestens einem vollständigen Tag (00:00–23:45) hochladen."
+                ),
+                no_update, no_update, no_update, netload_out,
             )
-            return err_fig, no_update, no_update, no_update, netload_out
 
         act_day = pd.Timestamp(act_day, tz="Europe/Vienna")
         # Bei neuem Upload auf ersten verfuegbaren Tag springen
@@ -1388,6 +1422,16 @@ def run_dashboard(
             lp_results = worker.run(
                 act_day=act_day, **sim_kwargs,
                 control_algorithm=control_algorithm,
+            )
+
+        status = lp_results.get("milp_status", "")
+        if status not in ("Optimal", "No battery", "PV surplus"):
+            return (
+                _make_error_figure(
+                    f"MILP-Optimierung nicht lösbar: <b>{status}</b><br>"
+                    "Bitte Batterieparameter (SOC-Grenzen, Kapazität) oder Preismodell prüfen."
+                ),
+                act_day.date(), min_date.date(), max_date.date(), netload_out,
             )
 
         return build_figure(lp_results), act_day.date(), min_date.date(), max_date.date(), netload_out
