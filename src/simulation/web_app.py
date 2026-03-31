@@ -491,7 +491,7 @@ def parse_csv(contents: str) -> pd.DataFrame:
     """Parst hochgeladene CSV-Dateien.
 
     Erkennt automatisch:
-    - VKW-Smartmeter-Format (4 Header-Zeilen, Semikolon, Latin-1)
+    - Semikolon-Format mit "Beginn der Messung;Messwert" (1 Header-Zeile oder VKW mit 4 Metadaten-Zeilen)
     - Generisches CSV (mit/ohne Header, beliebiges Zeitraster)
       → wird bei Bedarf auf 15-Minuten-Intervalle resampelt,
         Watt-Werte (Median > 100) automatisch in kW umgerechnet.
@@ -500,36 +500,56 @@ def parse_csv(contents: str) -> pd.DataFrame:
     raw = base64.b64decode(content_string)
 
     try:
-        decoded = raw.decode("utf-8")
+        decoded = raw.decode("utf-8-sig")  # utf-8-sig entfernt BOM automatisch
     except UnicodeDecodeError:
         decoded = raw.decode("latin-1")
 
     lines = decoded.strip().splitlines()
-    is_vkw = ";" in lines[min(4, len(lines) - 1)] and "Messwert" in decoded
+    is_messwert = "Messwert" in decoded and "Beginn der Messung" in decoded
 
-    if is_vkw:
-        df = pd.read_csv(
-            StringIO(decoded), sep=";", skiprows=4, decimal=",",
+    if is_messwert:
+        # Header-Zeile suchen (funktioniert für 1 oder 4 Metadaten-Zeilen)
+        header_row = next(
+            (i for i, l in enumerate(lines) if l.strip().startswith("Beginn der Messung")),
+            None,
         )
+        if header_row is None:
+            raise ValueError("Keine Zeile mit 'Beginn der Messung' als Header gefunden")
+        df = pd.read_csv(StringIO(decoded), sep=";", skiprows=header_row, decimal=",")
         df.columns = df.columns.str.strip()
         df["ts"] = pd.to_datetime(
             df["Beginn der Messung"], format="%d.%m.%Y %H:%M:%S",
         )
-        df["ts"] = df["ts"].dt.tz_localize("Europe/Vienna")
+        df["ts"] = df["ts"].dt.tz_localize("Europe/Vienna", ambiguous="infer", nonexistent="shift_forward")
         df = df.set_index("ts")
-        df["value_kw"] = pd.to_numeric(
-            df["Messwert"], errors="coerce").fillna(0.0)
+        # Erste Spalte nehmen deren Name mit "Messwert" beginnt (z.B. "Messwert" oder "Messwert-kw")
+        val_col = next((c for c in df.columns if c.startswith("Messwert")), None)
+        if val_col is None:
+            raise ValueError("Keine Messwert-Spalte gefunden")
+        df["value_kw"] = pd.to_numeric(df[val_col], errors="coerce").fillna(0.0)
 
     else:
-        # Header-Erkennung: zweite Spalte der ersten Zeile numerisch → kein Header
-        first_line = lines[0] if lines else ""
-        first_val = first_line.split(",")[1].strip() if "," in first_line else ""
-        has_header = not first_val.lstrip("-").replace(".", "", 1).isdigit()
+        # Trennzeichen und Header generisch erkennen (unabhängig von Spaltenbezeichnungen)
+        import csv as _csv
+        sample = decoded[:4096]
+        sniffer = _csv.Sniffer()
+        try:
+            dialect = sniffer.sniff(sample, delimiters=",;\t|")
+            sep = dialect.delimiter
+        except _csv.Error:
+            sep = ","
+        decimal = "," if sep != "," else "."
+        has_header = sniffer.has_header(sample)
 
-        if has_header:
-            df = pd.read_csv(StringIO(decoded))
-            df.columns = df.columns.str.strip()
-            # Auto-detect timestamp column (first column parseable as datetime)
+        df = pd.read_csv(
+            StringIO(decoded), sep=sep, decimal=decimal,
+            header=0 if has_header else None,
+        )
+        df.columns = [str(c).strip() for c in df.columns]
+
+        if not has_header:
+            ts_col, val_col = df.columns[0], df.columns[1]
+        else:
             ts_col = None
             for col in df.columns:
                 try:
@@ -540,7 +560,6 @@ def parse_csv(contents: str) -> pd.DataFrame:
                     continue
             if ts_col is None:
                 raise ValueError("Keine Timestamp-Spalte erkannt")
-            # Value column: first numeric column that isn't the timestamp
             val_col = None
             for col in df.columns:
                 if col == ts_col:
@@ -550,13 +569,14 @@ def parse_csv(contents: str) -> pd.DataFrame:
                     break
             if val_col is None:
                 raise ValueError("Keine numerische Wert-Spalte erkannt")
-        else:
-            df = pd.read_csv(StringIO(decoded), header=None,
-                             names=["ts", "value"])
-            ts_col, val_col = "ts", "value"
 
-        df["ts"] = pd.to_datetime(df[ts_col], utc=True).dt.tz_convert(
-            "Europe/Vienna")
+        # Zeitstempel parsen: erst generisch, dann deutsches Format als Fallback
+        try:
+            df["ts"] = pd.to_datetime(df[ts_col], utc=True).dt.tz_convert("Europe/Vienna")
+        except Exception:
+            df["ts"] = pd.to_datetime(
+                df[ts_col], format="%d.%m.%Y %H:%M:%S", dayfirst=True,
+            ).dt.tz_localize("Europe/Vienna", ambiguous="infer", nonexistent="shift_forward")
         df = df.set_index("ts")
         df["value_kw"] = pd.to_numeric(
             df[val_col], errors="coerce").fillna(0.0)
@@ -602,13 +622,15 @@ def run_dashboard(
     # Verfügbare Tage aus dem aktuellen Datensatz
     netload_kw = bess.get_netload_profile()
     _first_ts = netload_kw.index.min()
-    _first_date = _first_ts.normalize()
+    _first_cal = _first_ts.date()
     if _first_ts.hour != 0 or _first_ts.minute != 0:
-        _first_date = _first_date + pd.Timedelta(days=1)
+        _first_cal = _first_cal + pd.DateOffset(days=1)
     _last_ts = netload_kw.index.max()
-    _last_date = _last_ts.normalize()
+    _last_cal = _last_ts.date()
     if _last_ts.hour != 23 or _last_ts.minute != 45:
-        _last_date = _last_date - pd.Timedelta(days=1)
+        _last_cal = _last_cal - pd.DateOffset(days=1)
+    _first_date = pd.Timestamp(_first_cal, tz="Europe/Vienna")
+    _last_date = pd.Timestamp(_last_cal, tz="Europe/Vienna")
 
     # Default-Netload als JSON für neue Sessions
     _default_netload_json = bess.get_netload_profile().to_json(date_format="iso")
@@ -669,6 +691,24 @@ def run_dashboard(
                                     "borderTop": f"1px solid {COLOR['border']}",
                                     "margin": "10px 0"}),
                                 html.Div(
+                                    id="input-selected-profile",
+                                    style={
+                                        "fontSize": "12px",
+                                        "color": COLOR["text_light"],
+                                        "backgroundColor": "#f8fafc",
+                                        "borderRadius": "6px",
+                                        "padding": "10px 12px",
+                                        "lineHeight": "1.5",
+                                        "marginBottom": "10px",
+                                        "border": f"1px solid {COLOR['border']}",
+                                    },
+                                    children=[
+                                        html.Span(
+                                            ("Aktuell verwendetes Lastprofil: Realer Beispiel Haushalt mit PV.",),
+                                            style={"fontWeight": "600"})
+                                    ],
+                                ),
+                                html.Div(
                                     id="input-instructions",
                                     style={
                                         "fontSize": "12px",
@@ -682,7 +722,7 @@ def run_dashboard(
                                     },
                                     children=[
                                         html.Span(
-                                            ("Profil (ohne Batterieeinfluss) als CSV hochladen. ",
+                                            ("Optional neues Profil (ohne Batterieeinfluss) als CSV hochladen. ",
                                              "Erste Spalte Datum/Uhrzeit, zweite Spalte kW-Werte."),
                                             style={"fontWeight": "600"})
                                     ],
@@ -1251,6 +1291,7 @@ def run_dashboard(
         Output("act-day-picker", "min_date_allowed"),
         Output("act-day-picker", "max_date_allowed"),
         Output("netload-store", "data"),
+        Output("input-selected-profile", "children"),
         Input("act-day-picker", "date"),
         Input("residual-profile-upload", "contents"),
         Input("load-profile-upload", "contents"),
@@ -1290,6 +1331,7 @@ def run_dashboard(
         triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
 
         netload_out = no_update
+        profile_label_out = no_update
 
         # Nur bei Upload neu parsen, nicht bei Datumswechsel
         if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
@@ -1307,10 +1349,12 @@ def run_dashboard(
                     df_net = pd.DataFrame({"net_load_kw": df_res["value_kw"]})
                     netload_json = df_net.to_json(date_format="iso")
                     netload_out = netload_json
+                profile_label_out = [html.Span("Aktuell verwendetes Lastprofil: Eigenes Profil",
+                                               style={"fontWeight": "600"})]
             except Exception as exc:
                 return (
                     _make_error_figure(f"CSV konnte nicht eingelesen werden:<br>{exc}"),
-                    no_update, no_update, no_update, no_update,
+                    no_update, no_update, no_update, no_update, no_update,
                 )
 
         # Worker-Bess (per-Request, shared EPEX prices)
@@ -1322,13 +1366,15 @@ def run_dashboard(
 
         netload_profile = worker.get_netload_profile()
         first_ts = netload_profile.index.min()
-        min_date = first_ts.normalize()
+        min_cal = first_ts.date()
         if first_ts.hour != 0 or first_ts.minute != 0:
-            min_date = min_date + pd.Timedelta(days=1)
+            min_cal = min_cal + pd.DateOffset(days=1)
         last_ts = netload_profile.index.max()
-        max_date = last_ts.normalize()
+        max_cal = last_ts.date()
         if last_ts.hour != 23 or last_ts.minute != 45:
-            max_date = max_date - pd.Timedelta(days=1)
+            max_cal = max_cal - pd.DateOffset(days=1)
+        min_date = pd.Timestamp(min_cal, tz="Europe/Vienna")
+        max_date = pd.Timestamp(max_cal, tz="Europe/Vienna")
 
         if max_date < min_date:
             return (
@@ -1336,7 +1382,7 @@ def run_dashboard(
                     "Keine vollständigen Tage im Datensatz verfügbar.<br>"
                     "Bitte eine CSV mit mindestens einem vollständigen Tag (00:00–23:45) hochladen."
                 ),
-                no_update, no_update, no_update, netload_out,
+                no_update, no_update, no_update, netload_out, no_update,
             )
 
         act_day = pd.Timestamp(act_day, tz="Europe/Vienna")
@@ -1431,10 +1477,10 @@ def run_dashboard(
                     f"MILP-Optimierung nicht lösbar: <b>{status}</b><br>"
                     "Bitte Batterieparameter (SOC-Grenzen, Kapazität) oder Preismodell prüfen."
                 ),
-                act_day.date(), min_date.date(), max_date.date(), netload_out,
+                act_day.date(), min_date.date(), max_date.date(), netload_out, no_update,
             )
 
-        return build_figure(lp_results), act_day.date(), min_date.date(), max_date.date(), netload_out
+        return build_figure(lp_results), act_day.date(), min_date.date(), max_date.date(), netload_out, profile_label_out
 
     # ── Start-Callback: Gesamtsimulation starten ────────────────────
     @app.callback(
