@@ -1637,7 +1637,13 @@ def run_dashboard(
     return app
 
 
-# Initialisiere App und exportiere WSGI-kompatibles Objekt für Gunicorn
-bess = Bess()
-app = run_dashboard(bess)
-application = app.server
+def create_application():
+    """WSGI application factory. Used by Gunicorn."""
+    bess = Bess()
+    app = run_dashboard(bess)
+    return app.server
+
+
+if __name__ == "__main__":
+    application = create_application()
+    application.run(debug=True, port=5000)

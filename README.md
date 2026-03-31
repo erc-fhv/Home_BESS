@@ -23,7 +23,7 @@ Group=molu
 WorkingDirectory=/home/molu/repos/Home_BESS/src/simulation
 
 # Command to start Gunicorn
-ExecStart=/home/molu/repos/Home_BESS/.venv/bin/gunicorn web_app:application --worker-class eventlet --workers 1 -b 0.0.0.0:5000
+ExecStart=/home/molu/repos/Home_BESS/.venv/bin/gunicorn "web_app:create_application()" --worker-class eventlet --workers 1 -b 0.0.0.0:5000
 
 # Restart policy
 Restart=always
