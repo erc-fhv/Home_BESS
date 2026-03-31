@@ -566,8 +566,14 @@ def run_dashboard(
 
     # Verfügbare Tage aus dem aktuellen Datensatz
     netload_kw = bess.get_netload_profile()
-    _first_date = netload_kw.index.min().normalize()
-    _last_date = netload_kw.index.max().normalize()
+    _first_ts = netload_kw.index.min()
+    _first_date = _first_ts.normalize()
+    if _first_ts.hour != 0 or _first_ts.minute != 0:
+        _first_date = _first_date + pd.Timedelta(days=1)
+    _last_ts = netload_kw.index.max()
+    _last_date = _last_ts.normalize()
+    if _last_ts.hour != 23 or _last_ts.minute != 45:
+        _last_date = _last_date - pd.Timedelta(days=1)
 
     # Default-Netload als JSON für neue Sessions
     _default_netload_json = bess.get_netload_profile().to_json(date_format="iso")
@@ -1274,8 +1280,30 @@ def run_dashboard(
             worker.netload_kw = df
 
         netload_profile = worker.get_netload_profile()
-        min_date = netload_profile.index.min().normalize()
-        max_date = netload_profile.index.max().normalize()
+        first_ts = netload_profile.index.min()
+        min_date = first_ts.normalize()
+        if first_ts.hour != 0 or first_ts.minute != 0:
+            min_date = min_date + pd.Timedelta(days=1)
+        last_ts = netload_profile.index.max()
+        max_date = last_ts.normalize()
+        if last_ts.hour != 23 or last_ts.minute != 45:
+            max_date = max_date - pd.Timedelta(days=1)
+
+        if max_date < min_date:
+            err_fig = go.Figure()
+            err_fig.update_layout(
+                template="plotly_white",
+                paper_bgcolor="#f8fafc",
+                annotations=[dict(
+                    text="Keine vollständigen Tage im Datensatz verfügbar.<br>"
+                         "Bitte eine CSV mit mindestens einem vollständigen Tag (00:00-23:45) hochladen.",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=14, color=COLOR["text_light"]),
+                    align="center",
+                )],
+            )
+            return err_fig, no_update, no_update, no_update, netload_out
 
         act_day = pd.Timestamp(act_day, tz="Europe/Vienna")
         # Bei neuem Upload auf ersten verfuegbaren Tag springen
