@@ -87,10 +87,11 @@ class BessOptimizer:
             # Maximiere Autarkie = minimiere Netzbezug
             model += -pulp.lpSum(p_buy_kw[p] * delta_t for p in P)
         elif objective == "peak_shaving":
-            # Minimiere maximale Netzspitze (Bezug)
+            # Minimiere maximale Netzspitze (Bezug UND Einspeisung)
             p_peak = pulp.LpVariable("p_peak", 0)
             for p in P:
-                model += p_buy_kw[p] <= p_peak
+                model += p_buy_kw[p] - p_sell_kw[p] <=  p_peak   # Bezugsspitze
+                model += p_sell_kw[p] - p_buy_kw[p] <=  p_peak   # Einspeisespitze
             model += -p_peak
         else:
             # Profit: Erlös – Kosten
