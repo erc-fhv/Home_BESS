@@ -122,8 +122,8 @@ class Bess:
                 price_sell_eur_kwh=self.price_sell_eur_kwh,
                 price_buy_eur_kwh=self.price_buy_eur_kwh,
                 net_load_kw=self.net_load_of_one_day_kw,
-                soc_init_percent=soc_init_percent,
-                soc_final_percent=soc_init_percent,
+                soc_init_percent=self.soc_final_percent,    # Start-SOC für MILP-Optimierung (End-SOC des Vortags)
+                soc_final_percent=self.soc_final_percent,
                 capacity_kwh=self.capacity_kwh,
                 max_charge_kw=self.max_charge_kw,
                 max_discharge_kw=self.max_discharge_kw,
@@ -168,7 +168,7 @@ class Bess:
             raise ValueError("end_day must be greater than or equal to start_day")
         all_days = pd.date_range(start=start_ts, end=end_ts, freq="1D", tz="Europe/Vienna")
         rows = []
-        soc_init = self.soc_final_percent if self.soc_final_percent is not None else 50.0
+        soc_init = self.soc_final_percent
 
         for idx, act_day in enumerate(all_days):
 
