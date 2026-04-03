@@ -1328,6 +1328,10 @@ def run_dashboard(
         Output("act-day-picker", "date", allow_duplicate=True),
         Output("act-day-picker", "min_date_allowed"),
         Output("act-day-picker", "max_date_allowed"),
+        Output("year-range-picker", "min_date_allowed"),
+        Output("year-range-picker", "max_date_allowed"),
+        Output("year-range-picker", "start_date"),
+        Output("year-range-picker", "end_date"),
         Output("input-selected-profile", "children"),
         Output("residual-upload-status", "children"),
         Output("load-upload-status", "children"),
@@ -1410,7 +1414,9 @@ def run_dashboard(
                     profile_label_out = [html.Span(msg, style={"fontWeight": "600",
                                                                "color": COLOR["text_light"]})]
                     return (
-                        no_update, no_update, no_update, no_update, profile_label_out,
+                        no_update, no_update, no_update, no_update,
+                        no_update, no_update, no_update, no_update,
+                        profile_label_out,
                         status_residual_out, status_load_out, status_gen_out,
                     )
             elif residual_contents:
@@ -1424,6 +1430,7 @@ def run_dashboard(
                     status_residual_out = [html.Span(f"✗ {exc}", style=_err_style)]
                     return (
                         _make_error_figure(f"CSV konnte nicht eingelesen werden:<br>{exc}"),
+                        no_update, no_update, no_update, no_update,
                         no_update, no_update, no_update, no_update,
                         status_residual_out, status_load_out, status_gen_out,
                     )
@@ -1453,16 +1460,22 @@ def run_dashboard(
                     "Bitte eine CSV mit mindestens einem vollständigen Tag (00:00–23:45) hochladen."
                 ),
                 no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update, no_update,
                 status_residual_out, status_load_out, status_gen_out,
             )
 
         act_day = pd.Timestamp(act_day, tz="Europe/Vienna")
         # Bei neuem Upload auf ersten verfuegbaren Tag springen
-        if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
+        is_upload = triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload")
+        if is_upload:
             act_day = min_date if min_date.tzinfo else min_date.tz_localize("Europe/Vienna")
         # Sicherstellen, dass act_day im verfügbaren Bereich liegt
         act_day = max(act_day, min_date)
         act_day = min(act_day, max_date)
+
+        # year-range-picker: Grenzen immer aktualisieren, Auswahl nur bei Upload
+        year_start_out = min_date.date() if is_upload else no_update
+        year_end_out = max_date.date() if is_upload else no_update
 
         # Batterie-Parameter aktualisieren
         worker.update_battery_params(
@@ -1544,7 +1557,9 @@ def run_dashboard(
         except Exception as exc:
             return (
                 _make_error_figure(f"Simulation fehlgeschlagen:<br>{exc}"),
-                act_day.date(), min_date.date(), max_date.date(), no_update,
+                act_day.date(), min_date.date(), max_date.date(),
+                min_date.date(), max_date.date(), year_start_out, year_end_out,
+                no_update,
                 status_residual_out, status_load_out, status_gen_out,
             )
 
@@ -1555,12 +1570,15 @@ def run_dashboard(
                     f"MILP-Optimierung nicht lösbar: <b>{status}</b><br>"
                     "Bitte Batterieparameter (SOC-Grenzen, Kapazität) oder Preismodell prüfen."
                 ),
-                act_day.date(), min_date.date(), max_date.date(), no_update,
+                act_day.date(), min_date.date(), max_date.date(),
+                min_date.date(), max_date.date(), year_start_out, year_end_out,
+                no_update,
                 no_update, no_update, no_update,
             )
 
         return (
             build_figure(lp_results), act_day.date(), min_date.date(), max_date.date(),
+            min_date.date(), max_date.date(), year_start_out, year_end_out,
             profile_label_out,
             status_residual_out, status_load_out, status_gen_out,
         )
