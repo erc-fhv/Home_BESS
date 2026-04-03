@@ -1,4 +1,5 @@
 import base64
+import collections
 import copy
 from io import StringIO
 import threading
@@ -12,6 +13,34 @@ from dash.exceptions import PreventUpdate
 from flask_socketio import SocketIO, join_room
 
 from simulation.bess_simulation import Bess
+
+# Max possible sessions. Needed for server-side caching, in order to
+# have higher performance for slow devices.
+_MAX_SESSIONS = 100
+
+
+class _BoundedCache(collections.OrderedDict):
+    """OrderedDict mit LRU-Eviction: älteste Einträge werden entfernt wenn maxsize überschritten."""
+
+    def __init__(self, maxsize: int = _MAX_SESSIONS):
+        super().__init__()
+        self._maxsize = maxsize
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        while len(self) > self._maxsize:
+            self.popitem(last=False)
+
+    def get_or_create(self, key, factory=dict):
+        """Wie setdefault, aber bewegt den Key ans Ende (= zuletzt benutzt)."""
+        if key in self:
+            self.move_to_end(key)
+            return self[key]
+        val = factory()
+        self[key] = val
+        return val
 
 # ── Styling-Konstanten ───────────────────────────────────────────────────────
 COLOR = {
@@ -1206,9 +1235,9 @@ def run_dashboard(
 
     app.layout = _serve_layout
 
-    # ── Server-seitige Caches (per Session) ──────────────────────────
-    _pv_caches: dict[str, dict] = {}
-    _netload_cache: dict[str, pd.DataFrame] = {}
+    # ── Server-seitige Caches (per Session, LRU-begrenzt) ────────────
+    _pv_caches: _BoundedCache = _BoundedCache()
+    _netload_cache: _BoundedCache = _BoundedCache()
 
     # ── Callbacks ────────────────────────────────────────────────────────
     @app.callback(
@@ -1357,13 +1386,13 @@ def run_dashboard(
                 if load_contents:
                     try:
                         df_load = parse_csv(load_contents)
-                        status_load_out = [html.Span(f"✓ {len(df_load)} Messungen geladen", style=_ok_style)]
+                        status_load_out = [html.Span(f"✓ {len(df_load)} Messzeitpunkte geladen", style=_ok_style)]
                     except Exception as exc:
                         status_load_out = [html.Span(f"✗ {exc}", style=_err_style)]
                 if gen_contents:
                     try:
                         df_gen = parse_csv(gen_contents)
-                        status_gen_out = [html.Span(f"✓ {len(df_gen)} Messungen geladen", style=_ok_style)]
+                        status_gen_out = [html.Span(f"✓ {len(df_gen)} Messzeitpunkte geladen", style=_ok_style)]
                     except Exception as exc:
                         status_gen_out = [html.Span(f"✗ {exc}", style=_err_style)]
                 if df_load is not None and df_gen is not None:
@@ -1388,7 +1417,7 @@ def run_dashboard(
                 try:
                     df_res = parse_csv(residual_contents)
                     _netload_cache[_sid] = pd.DataFrame({"net_load_kw": df_res["value_kw"]})
-                    status_residual_out = [html.Span(f"✓ {len(df_res)} Messungen geladen", style=_ok_style)]
+                    status_residual_out = [html.Span(f"✓ {len(df_res)} Messzeitpunkte geladen", style=_ok_style)]
                     profile_label_out = [html.Span("Aktuell verwendetes Lastprofil: Eigenes Profil",
                                                    style={"fontWeight": "600"})]
                 except Exception as exc:
@@ -1469,7 +1498,7 @@ def run_dashboard(
         try:
             if control_algorithm == "pv-ueberschussladen":
                 # Build cache key from all parameters that affect PV surplus results
-                _pv_cache = _pv_caches.setdefault(session_id or "", {})
+                _pv_cache = _pv_caches.get_or_create(session_id or "")
                 profile_fp = (
                     str(netload_profile.index.min()),
                     str(netload_profile.index.max()),
