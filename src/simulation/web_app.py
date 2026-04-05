@@ -562,13 +562,32 @@ def parse_csv(contents: str) -> pd.DataFrame:
         import csv as _csv
         sample = decoded[:4096]
         sniffer = _csv.Sniffer()
-        try:
-            dialect = sniffer.sniff(sample, delimiters=",;\t|")
-            sep = dialect.delimiter
-        except _csv.Error:
-            sep = ","
+
+        # Semikolon-Heuristik: wenn jede Zeile genau ein ";" hat, ist ";"
+        # sehr wahrscheinlich das Trennzeichen (und "," nur Dezimalkomma).
+        sample_lines = [l for l in lines[:20] if l.strip()]
+        if sample_lines and all(l.count(";") == 1 for l in sample_lines):
+            sep = ";"
+        else:
+            try:
+                dialect = sniffer.sniff(sample, delimiters=",;\t|")
+                sep = dialect.delimiter
+            except _csv.Error:
+                sep = ","
         decimal = "," if sep != "," else "."
+
+        # Robustere Header-Erkennung: sniffer.has_header ist unzuverlässig
+        # bei rein numerischen CSVs ohne echten Header.  Wir prüfen, ob die
+        # erste Zelle der ersten Zeile ein Datum sein könnte – wenn ja, gibt
+        # es keinen Header.
         has_header = sniffer.has_header(sample)
+        if has_header:
+            first_line = lines[0].split(sep)[0].strip()
+            try:
+                pd.to_datetime(first_line, dayfirst=True)
+                has_header = False          # erste Zeile ist ein Datenpunkt
+            except (ValueError, TypeError):
+                pass                        # echte Header-Zeile
 
         df = pd.read_csv(
             StringIO(decoded), sep=sep, decimal=decimal,
@@ -599,13 +618,25 @@ def parse_csv(contents: str) -> pd.DataFrame:
             if val_col is None:
                 raise ValueError("Keine numerische Wert-Spalte erkannt")
 
-        # Zeitstempel parsen: erst generisch, dann deutsches Format als Fallback
-        try:
-            df["ts"] = pd.to_datetime(df[ts_col], utc=True).dt.tz_convert("Europe/Vienna")
-        except Exception:
-            df["ts"] = pd.to_datetime(
-                df[ts_col], format="%d.%m.%Y %H:%M:%S", dayfirst=True,
-            ).dt.tz_localize("Europe/Vienna", ambiguous="infer", nonexistent="shift_forward")
+        # Zeitstempel parsen: deutsches Format bevorzugt, UTC nur wenn
+        # die Timestamps tatsächlich Zeitzonen-Info enthalten.
+        _ts_parsed = False
+        for _fmt in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M"):
+            try:
+                df["ts"] = pd.to_datetime(
+                    df[ts_col], format=_fmt, dayfirst=True,
+                ).dt.tz_localize("Europe/Vienna", ambiguous="infer", nonexistent="shift_forward")
+                _ts_parsed = True
+                break
+            except (ValueError, TypeError):
+                continue
+        if not _ts_parsed:
+            try:
+                df["ts"] = pd.to_datetime(df[ts_col], utc=True).dt.tz_convert("Europe/Vienna")
+            except Exception:
+                df["ts"] = pd.to_datetime(
+                    df[ts_col], dayfirst=True,
+                ).dt.tz_localize("Europe/Vienna", ambiguous="infer", nonexistent="shift_forward")
         df = df.set_index("ts")
         df["value_kw"] = pd.to_numeric(
             df[val_col], errors="coerce").fillna(0.0)

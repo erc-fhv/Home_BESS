@@ -11,3 +11,4 @@ pyproject.toml
 **.sh
 **/epex_prices.csv
 tests/data/test_day_ahead_prices.csv
+tests/data/tmp.ipnb
