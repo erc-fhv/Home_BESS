@@ -39,6 +39,8 @@ ALL_PROFILES = [
     "pv_profile_2",
     "load_profile_3",
     "pv_profile_3",
+    "load_profile_4",
+    "load_profile_5",
 ]
 
 
@@ -111,3 +113,70 @@ def test_net_load_from_paired_profiles(n):
     assert len(common) > 0, f"Pair {n}: profiles have no overlapping timestamps"
     net = df_load.loc[common, "value_kw"] - df_pv.loc[common, "value_kw"]
     assert not net.isna().any(), f"Pair {n}: net-load has NaN values"
+
+
+# ── load_profile_4: headerless semicolon CSV, includes DST spring-forward ────
+
+def test_load_profile_4_first_day():
+    """First timestamp must be 2026-03-23 00:00 CET."""
+    df = _parse("load_profile_4")
+    expected = pd.Timestamp("2026-03-23", tz="Europe/Vienna")
+    assert df.index[0] == expected, f"First timestamp {df.index[0]} != {expected}"
+
+
+def test_load_profile_4_last_day():
+    """Last timestamp must be 2026-03-29 23:45 CET/CEST."""
+    df = _parse("load_profile_4")
+    expected = pd.Timestamp("2026-03-29 23:45", tz="Europe/Vienna")
+    assert df.index[-1] == expected, f"Last timestamp {df.index[-1]} != {expected}"
+
+
+def test_load_profile_4_step_count():
+    """7 days with DST spring-forward on 29.03 → 6×96 + 92 = 668 intervals."""
+    df = _parse("load_profile_4")
+    assert len(df) == 668, f"Expected 668 rows, got {len(df)}"
+
+
+def test_load_profile_4_first_values():
+    """First two power values must match the CSV (decimal comma → float)."""
+    df = _parse("load_profile_4")
+    assert df["value_kw"].iloc[0] == pytest.approx(0.192)
+    assert df["value_kw"].iloc[1] == pytest.approx(0.560302037964781)
+
+
+def test_load_profile_4_dst_spring_forward():
+    """2026-03-29 is spring-forward day. Data must be present and 02:00–02:45
+    must not exist (shifted forward)."""
+    df = _parse("load_profile_4")
+    day_29 = df.loc["2026-03-29":"2026-03-29"]
+    assert not day_29.empty, "No data for spring-forward day (2026-03-29)"
+    assert len(day_29) == 92, f"Expected 92 intervals (23h), got {len(day_29)}"
+
+
+# ── load_profile_5: headerless semicolon CSV, 14 days in November ────────────
+
+def test_load_profile_5_first_day():
+    """First timestamp must be 2025-11-03 00:00 CET."""
+    df = _parse("load_profile_5")
+    expected = pd.Timestamp("2025-11-03", tz="Europe/Vienna")
+    assert df.index[0] == expected, f"First timestamp {df.index[0]} != {expected}"
+
+
+def test_load_profile_5_last_day():
+    """Last timestamp must be 2025-11-16 23:45 CET."""
+    df = _parse("load_profile_5")
+    expected = pd.Timestamp("2025-11-16 23:45", tz="Europe/Vienna")
+    assert df.index[-1] == expected, f"Last timestamp {df.index[-1]} != {expected}"
+
+
+def test_load_profile_5_step_count():
+    """14 full days, no DST transition → 14×96 = 1344 intervals."""
+    df = _parse("load_profile_5")
+    assert len(df) == 1344, f"Expected 1344 rows, got {len(df)}"
+
+
+def test_load_profile_5_first_values():
+    """First two power values must match the CSV (decimal comma → float)."""
+    df = _parse("load_profile_5")
+    assert df["value_kw"].iloc[0] == pytest.approx(0.168)
+    assert df["value_kw"].iloc[1] == pytest.approx(0.4725744608492086)

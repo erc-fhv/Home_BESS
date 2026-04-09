@@ -8,7 +8,7 @@ capacity_kwh = 30.72        # 5.12kWh * 6
 soc_min_percent = 10.0
 soc_final_percent = 50.0
 
-# 95% battery round-trip efficiency multiplied by 96% converter power factor,
+# 95% battery round-trip efficiency multiplied by 96% converter efficiency,
 # i.e.: sqrt(0.95) * 0.96
 eta_charge = 0.936
 eta_discharge = 0.936

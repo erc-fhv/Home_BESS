@@ -1,4 +1,5 @@
 import base64
+import collections
 import copy
 from io import StringIO
 import threading
@@ -12,6 +13,34 @@ from dash.exceptions import PreventUpdate
 from flask_socketio import SocketIO, join_room
 
 from simulation.bess_simulation import Bess
+
+# Max possible sessions. Needed for server-side caching, in order to
+# have higher performance for slow devices.
+_MAX_SESSIONS = 100
+
+
+class _BoundedCache(collections.OrderedDict):
+    """OrderedDict mit LRU-Eviction: älteste Einträge werden entfernt wenn maxsize überschritten."""
+
+    def __init__(self, maxsize: int = _MAX_SESSIONS):
+        super().__init__()
+        self._maxsize = maxsize
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        while len(self) > self._maxsize:
+            self.popitem(last=False)
+
+    def get_or_create(self, key, factory=dict):
+        """Wie setdefault, aber bewegt den Key ans Ende (= zuletzt benutzt)."""
+        if key in self:
+            self.move_to_end(key)
+            return self[key]
+        val = factory()
+        self[key] = val
+        return val
 
 # ── Styling-Konstanten ───────────────────────────────────────────────────────
 COLOR = {
@@ -533,13 +562,32 @@ def parse_csv(contents: str) -> pd.DataFrame:
         import csv as _csv
         sample = decoded[:4096]
         sniffer = _csv.Sniffer()
-        try:
-            dialect = sniffer.sniff(sample, delimiters=",;\t|")
-            sep = dialect.delimiter
-        except _csv.Error:
-            sep = ","
+
+        # Semikolon-Heuristik: wenn jede Zeile genau ein ";" hat, ist ";"
+        # sehr wahrscheinlich das Trennzeichen (und "," nur Dezimalkomma).
+        sample_lines = [l for l in lines[:20] if l.strip()]
+        if sample_lines and all(l.count(";") == 1 for l in sample_lines):
+            sep = ";"
+        else:
+            try:
+                dialect = sniffer.sniff(sample, delimiters=",;\t|")
+                sep = dialect.delimiter
+            except _csv.Error:
+                sep = ","
         decimal = "," if sep != "," else "."
+
+        # Robustere Header-Erkennung: sniffer.has_header ist unzuverlässig
+        # bei rein numerischen CSVs ohne echten Header.  Wir prüfen, ob die
+        # erste Zelle der ersten Zeile ein Datum sein könnte – wenn ja, gibt
+        # es keinen Header.
         has_header = sniffer.has_header(sample)
+        if has_header:
+            first_line = lines[0].split(sep)[0].strip()
+            try:
+                pd.to_datetime(first_line, dayfirst=True)
+                has_header = False          # erste Zeile ist ein Datenpunkt
+            except (ValueError, TypeError):
+                pass                        # echte Header-Zeile
 
         df = pd.read_csv(
             StringIO(decoded), sep=sep, decimal=decimal,
@@ -570,13 +618,25 @@ def parse_csv(contents: str) -> pd.DataFrame:
             if val_col is None:
                 raise ValueError("Keine numerische Wert-Spalte erkannt")
 
-        # Zeitstempel parsen: erst generisch, dann deutsches Format als Fallback
-        try:
-            df["ts"] = pd.to_datetime(df[ts_col], utc=True).dt.tz_convert("Europe/Vienna")
-        except Exception:
-            df["ts"] = pd.to_datetime(
-                df[ts_col], format="%d.%m.%Y %H:%M:%S", dayfirst=True,
-            ).dt.tz_localize("Europe/Vienna", ambiguous="infer", nonexistent="shift_forward")
+        # Zeitstempel parsen: deutsches Format bevorzugt, UTC nur wenn
+        # die Timestamps tatsächlich Zeitzonen-Info enthalten.
+        _ts_parsed = False
+        for _fmt in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M"):
+            try:
+                df["ts"] = pd.to_datetime(
+                    df[ts_col], format=_fmt, dayfirst=True,
+                ).dt.tz_localize("Europe/Vienna", ambiguous="infer", nonexistent="shift_forward")
+                _ts_parsed = True
+                break
+            except (ValueError, TypeError):
+                continue
+        if not _ts_parsed:
+            try:
+                df["ts"] = pd.to_datetime(df[ts_col], utc=True).dt.tz_convert("Europe/Vienna")
+            except Exception:
+                df["ts"] = pd.to_datetime(
+                    df[ts_col], dayfirst=True,
+                ).dt.tz_localize("Europe/Vienna", ambiguous="infer", nonexistent="shift_forward")
         df = df.set_index("ts")
         df["value_kw"] = pd.to_numeric(
             df[val_col], errors="coerce").fillna(0.0)
@@ -632,9 +692,6 @@ def run_dashboard(
     _first_date = pd.Timestamp(_first_cal, tz="Europe/Vienna")
     _last_date = pd.Timestamp(_last_cal, tz="Europe/Vienna")
 
-    # Default-Netload als JSON für neue Sessions
-    _default_netload_json = bess.get_netload_profile().to_json(date_format="iso")
-
     # ── Layout (Funktion → jeder Page-Load bekommt eigene Session-ID) ─
     def _serve_layout():
         return html.Div(
@@ -642,7 +699,6 @@ def run_dashboard(
                     "fontFamily": "Inter, system-ui, -apple-system, sans-serif"},
             children=[
                 dcc.Store(id="session-id", data=str(uuid.uuid4())),
-                dcc.Store(id="netload-store", data=_default_netload_json),
                 dcc.Store(id="ws-sim-progress"),
                 dcc.Store(id="socket-init"),
             # ── Header ───────────────────────────────────────────────────
@@ -739,6 +795,10 @@ def run_dashboard(
                                                        "width": "100%"}),
                                             multiple=False,
                                         ),
+                                        html.Div(
+                                            id="residual-upload-status",
+                                            style={"marginTop": "6px", "fontSize": "12px"},
+                                        ),
                                     ],
                                 ),
                                 # Upload: Last + Erzeugung (2 CSVs)
@@ -754,6 +814,10 @@ def run_dashboard(
                                                        "width": "100%"}),
                                             multiple=False,
                                         ),
+                                        html.Div(
+                                            id="load-upload-status",
+                                            style={"marginTop": "6px", "fontSize": "12px"},
+                                        ),
                                         html.Div(style={"height": "6px"}),
                                         dcc.Upload(
                                             id="gen-profile-upload",
@@ -762,6 +826,10 @@ def run_dashboard(
                                                 style={**BTN,
                                                        "width": "100%"}),
                                             multiple=False,
+                                        ),
+                                        html.Div(
+                                            id="gen-upload-status",
+                                            style={"marginTop": "6px", "fontSize": "12px"},
                                         ),
                                     ],
                                 ),
@@ -1198,8 +1266,9 @@ def run_dashboard(
 
     app.layout = _serve_layout
 
-    # ── PV-Ueberschuss Cache (per Session) ────────────────────────────
-    _pv_caches: dict[str, dict] = {}
+    # ── Server-seitige Caches (per Session, LRU-begrenzt) ────────────
+    _pv_caches: _BoundedCache = _BoundedCache()
+    _netload_cache: _BoundedCache = _BoundedCache()
 
     # ── Callbacks ────────────────────────────────────────────────────────
     @app.callback(
@@ -1290,8 +1359,14 @@ def run_dashboard(
         Output("act-day-picker", "date", allow_duplicate=True),
         Output("act-day-picker", "min_date_allowed"),
         Output("act-day-picker", "max_date_allowed"),
-        Output("netload-store", "data"),
+        Output("year-range-picker", "min_date_allowed"),
+        Output("year-range-picker", "max_date_allowed"),
+        Output("year-range-picker", "start_date"),
+        Output("year-range-picker", "end_date"),
         Output("input-selected-profile", "children"),
+        Output("residual-upload-status", "children"),
+        Output("load-upload-status", "children"),
+        Output("gen-upload-status", "children"),
         Input("act-day-picker", "date"),
         Input("residual-profile-upload", "contents"),
         Input("load-profile-upload", "contents"),
@@ -1314,7 +1389,6 @@ def run_dashboard(
         Input("allow-feed-in", "value"),
         Input("opt-objective", "value"),
         State("input-mode", "value"),
-        State("netload-store", "data"),
         State("session-id", "data"),
         prevent_initial_call=True,
     )
@@ -1325,44 +1399,78 @@ def run_dashboard(
                      battery_capacity, battery_max_charge, battery_max_discharge,
                      battery_soc_min, battery_soc_final, battery_eta_charge, battery_eta_discharge,
                      control_algorithm, allow_feed_in_val, opt_objective,
-                     input_mode, netload_json, session_id):
+                     input_mode, session_id):
 
         ctx = callback_context
         triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
+        _sid = session_id or ""
 
-        netload_out = no_update
         profile_label_out = no_update
+        status_residual_out = no_update
+        status_load_out = no_update
+        status_gen_out = no_update
+
+        _ok_style = {"color": "#16a34a", "fontWeight": "600"}
+        _err_style = {"color": "#dc2626", "fontWeight": "600"}
 
         # Nur bei Upload neu parsen, nicht bei Datumswechsel
         if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
-            try:
-                if input_mode == "load_gen":
-                    if load_contents and gen_contents:
+            if input_mode == "load_gen":
+                df_load = None
+                df_gen = None
+                if load_contents:
+                    try:
                         df_load = parse_csv(load_contents)
+                        status_load_out = [html.Span(f"✓ {len(df_load)} Messzeitpunkte geladen", style=_ok_style)]
+                    except Exception as exc:
+                        status_load_out = [html.Span(f"✗ {exc}", style=_err_style)]
+                if gen_contents:
+                    try:
                         df_gen = parse_csv(gen_contents)
-                        net = df_load["value_kw"] - df_gen["value_kw"]
-                        df_net = pd.DataFrame({"net_load_kw": net})
-                        netload_json = df_net.to_json(date_format="iso")
-                        netload_out = netload_json
-                elif residual_contents:
+                        status_gen_out = [html.Span(f"✓ {len(df_gen)} Messzeitpunkte geladen", style=_ok_style)]
+                    except Exception as exc:
+                        status_gen_out = [html.Span(f"✗ {exc}", style=_err_style)]
+                if df_load is not None and df_gen is not None:
+                    net = (df_load["value_kw"] - df_gen["value_kw"]).fillna(0.0)
+                    _netload_cache[_sid] = pd.DataFrame({"net_load_kw": net})
+                    profile_label_out = [html.Span("Aktuell verwendetes Lastprofil: Eigenes Profil",
+                                                   style={"fontWeight": "600"})]
+                else:
+                    if df_load is None and df_gen is None:
+                        msg = "Kein Profil konnte geladen werden."
+                    elif df_load is None:
+                        msg = "Bitte noch Last-Profil hochladen."
+                    else:
+                        msg = "Bitte noch PV-Profil hochladen."
+                    profile_label_out = [html.Span(msg, style={"fontWeight": "600",
+                                                               "color": COLOR["text_light"]})]
+                    return (
+                        no_update, no_update, no_update, no_update,
+                        no_update, no_update, no_update, no_update,
+                        profile_label_out,
+                        status_residual_out, status_load_out, status_gen_out,
+                    )
+            elif residual_contents:
+                try:
                     df_res = parse_csv(residual_contents)
-                    df_net = pd.DataFrame({"net_load_kw": df_res["value_kw"]})
-                    netload_json = df_net.to_json(date_format="iso")
-                    netload_out = netload_json
-                profile_label_out = [html.Span("Aktuell verwendetes Lastprofil: Eigenes Profil",
-                                               style={"fontWeight": "600"})]
-            except Exception as exc:
-                return (
-                    _make_error_figure(f"CSV konnte nicht eingelesen werden:<br>{exc}"),
-                    no_update, no_update, no_update, no_update, no_update,
-                )
+                    _netload_cache[_sid] = pd.DataFrame({"net_load_kw": df_res["value_kw"]})
+                    status_residual_out = [html.Span(f"✓ {len(df_res)} Messzeitpunkte geladen", style=_ok_style)]
+                    profile_label_out = [html.Span("Aktuell verwendetes Lastprofil: Eigenes Profil",
+                                                   style={"fontWeight": "600"})]
+                except Exception as exc:
+                    status_residual_out = [html.Span(f"✗ {exc}", style=_err_style)]
+                    return (
+                        _make_error_figure(f"CSV konnte nicht eingelesen werden:<br>{exc}"),
+                        no_update, no_update, no_update, no_update,
+                        no_update, no_update, no_update, no_update,
+                        status_residual_out, status_load_out, status_gen_out,
+                    )
 
         # Worker-Bess (per-Request, shared EPEX prices)
         worker = copy.copy(bess)
-        if netload_json:
-            df = pd.read_json(StringIO(netload_json))
-            df.index = pd.to_datetime(df.index, utc=True).tz_convert("Europe/Vienna").as_unit("us")
-            worker.netload_kw = df
+        _cached_netload = _netload_cache.get(_sid)
+        if _cached_netload is not None:
+            worker.netload_kw = _cached_netload
 
         netload_profile = worker.get_netload_profile()
         first_ts = netload_profile.index.min()
@@ -1382,16 +1490,23 @@ def run_dashboard(
                     "Keine vollständigen Tage im Datensatz verfügbar.<br>"
                     "Bitte eine CSV mit mindestens einem vollständigen Tag (00:00–23:45) hochladen."
                 ),
-                no_update, no_update, no_update, netload_out, no_update,
+                no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update, no_update,
+                status_residual_out, status_load_out, status_gen_out,
             )
 
         act_day = pd.Timestamp(act_day, tz="Europe/Vienna")
         # Bei neuem Upload auf ersten verfuegbaren Tag springen
-        if triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload"):
+        is_upload = triggered in ("residual-profile-upload", "load-profile-upload", "gen-profile-upload")
+        if is_upload:
             act_day = min_date if min_date.tzinfo else min_date.tz_localize("Europe/Vienna")
         # Sicherstellen, dass act_day im verfügbaren Bereich liegt
         act_day = max(act_day, min_date)
         act_day = min(act_day, max_date)
+
+        # year-range-picker: Grenzen immer aktualisieren, Auswahl nur bei Upload
+        year_start_out = min_date.date() if is_upload else no_update
+        year_end_out = max_date.date() if is_upload else no_update
 
         # Batterie-Parameter aktualisieren
         worker.update_battery_params(
@@ -1424,50 +1539,59 @@ def run_dashboard(
             objective=opt_objective or "profit",
         )
 
-        if control_algorithm == "pv-ueberschussladen":
-            # Build cache key from all parameters that affect PV surplus results
-            _pv_cache = _pv_caches.setdefault(session_id or "", {})
-            profile_fp = (
-                str(netload_profile.index.min()),
-                str(netload_profile.index.max()),
-                len(netload_profile),
-            )
-            params_key = (
-                price_source, epex_offset_buy_cent, epex_offset_sell_cent,
-                grid_fee_cent, vat, fix_price_buy_cent, fix_price_sell_cent,
-                battery_capacity, battery_max_charge, battery_max_discharge,
-                battery_soc_min, battery_soc_final, battery_eta_charge,
-                battery_eta_discharge, profile_fp,
-            )
-            if _pv_cache.get("params_key") != params_key:
-                # Recompute full dataset with SOC carry-over
-                _pv_cache.clear()
-                _pv_cache["params_key"] = params_key
-                soc = battery_soc_final or 0.0
-                all_days = pd.date_range(
-                    start=min_date, end=max_date, freq="1D", tz="Europe/Vienna",
+        try:
+            if control_algorithm == "pv-ueberschussladen":
+                # Build cache key from all parameters that affect PV surplus results
+                _pv_cache = _pv_caches.get_or_create(session_id or "")
+                profile_fp = (
+                    str(netload_profile.index.min()),
+                    str(netload_profile.index.max()),
+                    len(netload_profile),
                 )
-                for day in all_days:
-                    day_res = worker.run(
-                        act_day=day, **sim_kwargs,
-                        control_algorithm="pv-ueberschussladen",
-                        soc_init_percent=soc,
+                params_key = (
+                    price_source, epex_offset_buy_cent, epex_offset_sell_cent,
+                    grid_fee_cent, vat, fix_price_buy_cent, fix_price_sell_cent,
+                    battery_capacity, battery_max_charge, battery_max_discharge,
+                    battery_soc_min, battery_soc_final, battery_eta_charge,
+                    battery_eta_discharge, profile_fp,
+                )
+                if _pv_cache.get("params_key") != params_key:
+                    # Recompute full dataset with SOC carry-over
+                    _pv_cache.clear()
+                    _pv_cache["params_key"] = params_key
+                    soc = battery_soc_final or 0.0
+                    all_days = pd.date_range(
+                        start=min_date, end=max_date, freq="1D", tz="Europe/Vienna",
                     )
-                    _pv_cache[str(day.date())] = day_res
-                    soc_series = day_res.get("soc_percent")
-                    if isinstance(soc_series, pd.Series) and len(soc_series) > 0:
-                        soc = float(soc_series.iloc[-1])
+                    for day in all_days:
+                        day_res = worker.run(
+                            act_day=day, **sim_kwargs,
+                            control_algorithm="pv-ueberschussladen",
+                            soc_init_percent=soc,
+                        )
+                        _pv_cache[str(day.date())] = day_res
+                        soc_series = day_res.get("soc_percent")
+                        if isinstance(soc_series, pd.Series) and len(soc_series) > 0:
+                            soc = float(soc_series.iloc[-1])
 
-            lp_results = _pv_cache.get(str(act_day.date()))
-            if lp_results is None:
+                lp_results = _pv_cache.get(str(act_day.date()))
+                if lp_results is None:
+                    lp_results = worker.run(
+                        act_day=act_day, **sim_kwargs,
+                        control_algorithm="pv-ueberschussladen",
+                    )
+            else:
                 lp_results = worker.run(
                     act_day=act_day, **sim_kwargs,
-                    control_algorithm="pv-ueberschussladen",
+                    control_algorithm=control_algorithm,
                 )
-        else:
-            lp_results = worker.run(
-                act_day=act_day, **sim_kwargs,
-                control_algorithm=control_algorithm,
+        except Exception as exc:
+            return (
+                _make_error_figure(f"Simulation fehlgeschlagen:<br>{exc}"),
+                act_day.date(), min_date.date(), max_date.date(),
+                min_date.date(), max_date.date(), year_start_out, year_end_out,
+                no_update,
+                status_residual_out, status_load_out, status_gen_out,
             )
 
         status = lp_results.get("milp_status", "")
@@ -1477,10 +1601,18 @@ def run_dashboard(
                     f"MILP-Optimierung nicht lösbar: <b>{status}</b><br>"
                     "Bitte Batterieparameter (SOC-Grenzen, Kapazität) oder Preismodell prüfen."
                 ),
-                act_day.date(), min_date.date(), max_date.date(), netload_out, no_update,
+                act_day.date(), min_date.date(), max_date.date(),
+                min_date.date(), max_date.date(), year_start_out, year_end_out,
+                no_update,
+                no_update, no_update, no_update,
             )
 
-        return build_figure(lp_results), act_day.date(), min_date.date(), max_date.date(), netload_out, profile_label_out
+        return (
+            build_figure(lp_results), act_day.date(), min_date.date(), max_date.date(),
+            min_date.date(), max_date.date(), year_start_out, year_end_out,
+            profile_label_out,
+            status_residual_out, status_load_out, status_gen_out,
+        )
 
     # ── Start-Callback: Gesamtsimulation starten ────────────────────
     @app.callback(
@@ -1508,7 +1640,6 @@ def run_dashboard(
         State("control-algorithm", "value"),
         State("allow-feed-in", "value"),
         State("opt-objective", "value"),
-        State("netload-store", "data"),
         State("session-id", "data"),
         prevent_initial_call=True,
     )
@@ -1533,7 +1664,6 @@ def run_dashboard(
         control_algorithm,
         allow_feed_in_val,
         opt_objective,
-        netload_json,
         session_id,
     ):
         if not n_clicks or not start_date or not end_date:
@@ -1573,11 +1703,9 @@ def run_dashboard(
             "objective": opt_objective or "profit",
         }
 
-        # Netload aus Session-Store statt aus geteilter bess-Instanz
-        if netload_json:
-            df_energy = pd.read_json(StringIO(netload_json))
-            df_energy.index = pd.to_datetime(df_energy.index, utc=True).tz_convert("Europe/Vienna").as_unit("us")
-        else:
+        # Netload aus Server-Cache statt aus geteilter bess-Instanz
+        df_energy = _netload_cache.get(session_id or "") if session_id else None
+        if df_energy is None:
             df_energy = bess.get_netload_profile()
 
         thread = threading.Thread(
@@ -1692,4 +1820,4 @@ def create_application():
 
 if __name__ == "__main__":
     application = create_application()
-    application.run(debug=True, port=5000)
+    application.run(debug=True, port=8500)

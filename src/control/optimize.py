@@ -76,7 +76,7 @@ class BessOptimizer:
                 net_load_kw.iloc[p] + p_sell_kw[p] + p_ch_kw[p]
             )
 
-        # Batterie-Einspeisung verbieten: Verkauf nur aus (vorhergesagtem!) PV-Ueberschuss
+        # Batterie-Einspeisung verbieten: Verkauf nur aus (vorhergesagtem) PV-Ueberschuss
         if not allow_battery_feed_in:
             for p in P:
                 pv_surplus = max(0.0, -float(net_load_kw.iloc[p]))
