@@ -103,9 +103,6 @@ class MpcEvaluationDashboard:
 
 		app.run(host=host, debug=debug)
 
-	def show(self) -> None:
-		self.run()
-
 	def _build_figure(self, mpc_result: pd.DataFrame, selected_mpc_time: pd.Timestamp):
 		fig = make_subplots(
 			rows=4,
@@ -196,4 +193,4 @@ class MpcEvaluationDashboard:
 
 if __name__ == "__main__":
 	dashboard = MpcEvaluationDashboard()
-	dashboard.show()
+	dashboard.run()
