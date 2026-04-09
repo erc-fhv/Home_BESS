@@ -61,6 +61,20 @@ class MpcEvaluationDashboard:
 		mpc_result = mpc_result.sort_values("timestamp").set_index("timestamp")
 		return self._build_figure(mpc_result, selected_mpc_time)
 
+	@staticmethod
+	def _find_free_port(host: str, default: int = 8050) -> int:
+		import socket
+
+		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		try:
+			sock.bind((host, default))
+			return default
+		except OSError:
+			sock.bind((host, 0))
+			return sock.getsockname()[1]
+		finally:
+			sock.close()
+
 	def run(self, host: str = "127.0.0.1", debug: bool = False) -> None:
 		file_options, default_file = self._get_file_options_and_default()
 		initial_mpc_options, initial_mpc_value = self._get_mpc_time_options(default_file)
@@ -101,7 +115,8 @@ class MpcEvaluationDashboard:
 		def _update_graph(selected_file: str, selected_mpc_time_iso: str | None):
 			return self._build_plot_for_selection(selected_file, selected_mpc_time_iso)
 
-		app.run(host=host, debug=debug)
+		port = self._find_free_port(host)
+		app.run(host=host, port=port, debug=debug)
 
 	def _build_figure(self, mpc_result: pd.DataFrame, selected_mpc_time: pd.Timestamp):
 		fig = make_subplots(
