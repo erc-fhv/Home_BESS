@@ -32,6 +32,10 @@ class BessOptimizer:
         assert price_sell_eur_kwh.index.equals(price_buy_eur_kwh.index)
         assert price_buy_eur_kwh.index.equals(net_load_kw.index)
 
+        # SOC-Grenzen clampen
+        soc_init_percent = float(np.clip(soc_init_percent, soc_min_percent, soc_max_percent))
+        soc_final_percent = float(np.clip(soc_final_percent, soc_min_percent, soc_max_percent))
+
         # Definiere Zeitindex und Parameter
         time_points = price_sell_eur_kwh.index
         T = range(len(time_points))
@@ -62,6 +66,11 @@ class BessOptimizer:
         for t in range(1, len(T)):
             model += soc_kwh[t] == soc_kwh[t-1] + \
                 delta_t * (eta_charge * p_ch_kw[t-1] - p_dis_kw[t-1] / eta_discharge)
+
+        # Explizite SOC-Grenzen (Variable-Bounds allein werden von CBC nicht zuverlässig eingehalten)
+        for t in T:
+            model += soc_kwh[t] <= soc_max_kwh
+            model += soc_kwh[t] >= soc_min_kwh
 
         # Lade-/Entlade-Exklusivität
         for p in P:
@@ -102,6 +111,11 @@ class BessOptimizer:
             )
 
         model.solve(pulp.PULP_CBC_CMD(msg=False))
+        if model.status != pulp.constants.LpStatusOptimal:
+            raise ValueError(
+                f"MILP nicht optimal gelöst (Status: {pulp.LpStatus[model.status]}). "
+                f"SOC_init={soc_init_percent:.1f}%, SOC_final={soc_final_percent:.1f}%"
+            )
         if verbose:
             print("Pulp-Resultate:")
             print(f"- Status numerisch: {model.status}")

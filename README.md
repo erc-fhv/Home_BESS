@@ -81,7 +81,6 @@ ExecStart=/home/molu/repos/Home_BESS/.venv/bin/python -u /home/molu/repos/Home_B
 Restart=always
 RestartSec=60
 Environment=PYTHONUNBUFFERED=1
-User=molu
 
 [Install]
 WantedBy=multi-user.target
@@ -101,4 +100,8 @@ sudo journalctl -u mpc.service -f
 View the current status of the service:
 ```
 sudo systemctl status mpc.service
+```
+Enable auto-start on boot:
+```
+sudo systemctl enable mpc.service
 ```
