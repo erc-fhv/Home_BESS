@@ -1,6 +1,5 @@
 # Home_BESS
 
-
 Home_BESS is a project for the simulation and control of a home battery energy storage system (BESS).
 
 ## Project Structure
@@ -22,6 +21,8 @@ Home_BESS is a project for the simulation and control of a home battery energy s
 
 ## Usage
 The main functions are located in the `src/` directory. For more information on usage and development, see the file `README_maintainer.md`.
+
+You can also explore and simulate battery scenarios online using the web tool: [https://homebattery.labs.fhv.at/](https://homebattery.labs.fhv.at/)
 
 ## License
 See [LICENSE](LICENSE).
