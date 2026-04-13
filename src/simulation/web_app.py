@@ -745,6 +745,30 @@ def run_dashboard(
                 ),
             ),
 
+            # ── Disclaimer-Banner ─────────────────────────────────────────
+            html.Div(
+                style={
+                    "backgroundColor": "#fefce8",
+                    "borderBottom": "1px solid #fde047",
+                    "padding": "10px 40px",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "gap": "10px",
+                },
+                children=[
+                    html.Span("⚠️", style={"fontSize": "16px"}),
+                    html.Span(
+                        [
+                            html.Strong("Entwicklungs-Tool - keine Haftung: "),
+                            "Dieses Tool wurde im Rahmen eines Forschungsprojekts an der FH Vorarlberg nach bestem Wissen und Gewissen entwickelt. "
+                            "Die Simulationsergebnisse dienen ausschließlich der Orientierung und erheben keinen Anspruch auf Vollständigkeit oder Richtigkeit. "
+                            "Für wirtschaftliche Entscheidungen, die auf Basis dieser Ergebnisse getroffen werden, wird keine Haftung übernommen.",
+                        ],
+                        style={"fontSize": "13px", "color": "#713f12", "lineHeight": "1.5"},
+                    ),
+                ],
+            ),
+
             # ── Main: Sidebar left + Graph right ─────────────────────────
             html.Div(
                 style={"display": "flex", "gap": "20px",
@@ -810,7 +834,8 @@ def run_dashboard(
                                     children=[
                                         html.Span(
                                             ("Optional neues Profil (ohne Batterieeinfluss) als CSV hochladen. ",
-                                             "Erste Spalte Datum/Uhrzeit, zweite Spalte kW-Werte."),
+                                             "Entweder ein VKW-Online-Service Export. ",
+                                             "Oder ein eigenes Profil mit erster Spalte Datum/Uhrzeit und zweite Spalte Leistungswerte in kW."),
                                             style={"fontWeight": "600"})
                                     ],
                                 ),
