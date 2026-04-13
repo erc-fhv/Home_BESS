@@ -673,6 +673,37 @@ def run_dashboard(
             "https://cdn.socket.io/4.7.5/socket.io.min.js",
         ],
     )
+    app.index_string = '''<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        <!-- Matomo -->
+        <script>
+            var _paq = window._paq = window._paq || [];
+            _paq.push(['trackPageView']);
+            _paq.push(['enableLinkTracking']);
+            (function() {
+                var u="//webstats.it.fhv.at/";
+                _paq.push(['setTrackerUrl', u+'matomo.php']);
+                _paq.push(['setSiteId', '1']);
+                var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+                g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+            })();
+        </script>
+        <!-- End Matomo Code -->
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>'''
     _socketio = SocketIO(app.server, async_mode="gevent", cors_allowed_origins="*")
 
     @_socketio.on("join")
@@ -712,6 +743,30 @@ def run_dashboard(
                            "fontSize": "22px", "fontWeight": "700",
                            "letterSpacing": "-0.3px"},
                 ),
+            ),
+
+            # ── Disclaimer-Banner ─────────────────────────────────────────
+            html.Div(
+                style={
+                    "backgroundColor": "#fefce8",
+                    "borderBottom": "1px solid #fde047",
+                    "padding": "10px 40px",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "gap": "10px",
+                },
+                children=[
+                    html.Span("⚠️", style={"fontSize": "16px"}),
+                    html.Span(
+                        [
+                            html.Strong("Entwicklungs-Tool - keine Haftung: "),
+                            "Dieses Tool wurde im Rahmen eines Forschungsprojekts an der FH Vorarlberg nach bestem Wissen und Gewissen entwickelt. "
+                            "Die Simulationsergebnisse dienen ausschließlich der Orientierung und erheben keinen Anspruch auf Vollständigkeit oder Richtigkeit. "
+                            "Für wirtschaftliche Entscheidungen, die auf Basis dieser Ergebnisse getroffen werden, wird keine Haftung übernommen.",
+                        ],
+                        style={"fontSize": "13px", "color": "#713f12", "lineHeight": "1.5"},
+                    ),
+                ],
             ),
 
             # ── Main: Sidebar left + Graph right ─────────────────────────
@@ -779,7 +834,8 @@ def run_dashboard(
                                     children=[
                                         html.Span(
                                             ("Optional neues Profil (ohne Batterieeinfluss) als CSV hochladen. ",
-                                             "Erste Spalte Datum/Uhrzeit, zweite Spalte kW-Werte."),
+                                             "Entweder ein VKW-Online-Service Export. ",
+                                             "Oder ein eigenes Profil mit erster Spalte Datum/Uhrzeit und zweite Spalte Leistungswerte in kW."),
                                             style={"fontWeight": "600"})
                                     ],
                                 ),
