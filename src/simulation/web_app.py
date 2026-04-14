@@ -736,13 +736,38 @@ def run_dashboard(
             html.Div(
                 style={"backgroundColor": COLOR["header"],
                        "padding": "18px 40px",
-                       "boxShadow": "0 2px 8px rgba(0,0,0,0.12)"},
-                children=html.H1(
-                    "FHV FZE - Lastmanagement Simulation",
-                    style={"color": "#fff", "margin": "0",
-                           "fontSize": "22px", "fontWeight": "700",
-                           "letterSpacing": "-0.3px"},
-                ),
+                       "boxShadow": "0 2px 8px rgba(0,0,0,0.12)",
+                       "display": "flex",
+                       "alignItems": "center",
+                       "justifyContent": "space-between"},
+                children=[
+                    html.H1(
+                        "FHV FZE - Lastmanagement Simulation",
+                        style={"color": "#fff", "margin": "0",
+                               "fontSize": "22px", "fontWeight": "700",
+                               "letterSpacing": "-0.3px"},
+                    ),
+                    html.A(
+                        # GitHub SVG icon (Octicon mark-github)
+                        [
+                            html.Img(
+                                src="https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/github.svg",
+                                style={"height": "24px", "width": "24px",
+                                       "filter": "invert(1)"},
+                            ),
+                            html.Span("Open Source", style={
+                                "color": "#fff", "fontSize": "13px",
+                                "marginLeft": "6px", "fontWeight": "500",
+                            }),
+                        ],
+                        href="https://github.com/erc-fhv/Home_BESS",
+                        target="_blank",
+                        title="GitHub Repository",
+                        style={"display": "flex", "alignItems": "center",
+                               "gap": "2px", "textDecoration": "none",
+                               "opacity": "0.8", "transition": "opacity 0.2s"},
+                    ),
+                ],
             ),
 
             # ── Disclaimer-Banner ─────────────────────────────────────────
