@@ -1,11 +1,11 @@
 # Home_BESS
 
 Home_BESS is a project for the simulation and control of a home battery energy storage system (BESS).
+Try it out online: [homebattery.labs.fhv.at](https://homebattery.labs.fhv.at/)
 
 ## Project Structure
 - `src/` – Source code for control, simulation, interfaces, and forecasting
 - `tests/` – Test scripts and test data
-- `build/` – Build artifacts
 
 ## Installation
 1. Install Python 3.11+
@@ -14,9 +14,9 @@ Home_BESS is a project for the simulation and control of a home battery energy s
    python -m venv .venv
    source .venv/bin/activate
    ```
-3. Install dependencies:
+3. Install the package:
    ```bash
-   pip install -r requirements.txt
+   pip install -e .
    ```
 
 ## Usage
