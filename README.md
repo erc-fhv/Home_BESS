@@ -20,9 +20,10 @@ Try it out online: [homebattery.labs.fhv.at](https://homebattery.labs.fhv.at/)
    ```
 
 ## Usage
-The main functions are located in the `src/` directory. For more information on usage and development, see the file `README_maintainer.md`.
+The main functions are located in the `src/` directory. For more information on usage and development, see [README_maintainer.md](README_maintainer.md).
 
-You can also explore and simulate battery scenarios online using the web tool: [https://homebattery.labs.fhv.at/](https://homebattery.labs.fhv.at/)
+## Acknowledgments
+We gratefully acknowledge the financial support from the Austrian Research Promotion Agency FFG for the Hub4FlECs project (COIN FFG 898053), which provided funding for the development of the software provided. https://projekte.ffg.at/projekt/4597880
 
 ## License
 See [LICENSE](LICENSE).
