@@ -742,7 +742,7 @@ def run_dashboard(
                        "justifyContent": "space-between"},
                 children=[
                     html.H1(
-                        "FHV FZE - Lastmanagement Simulation",
+                        "Fachhochschule Vorarlberg - Forschungszentrum Energie - Lastmanagement Simulation",
                         style={"color": "#fff", "margin": "0",
                                "fontSize": "22px", "fontWeight": "700",
                                "letterSpacing": "-0.3px"},
@@ -772,6 +772,7 @@ def run_dashboard(
 
             # ── Disclaimer-Banner ─────────────────────────────────────────
             html.Div(
+                id="disclaimer-banner",
                 style={
                     "backgroundColor": "#fefce8",
                     "borderBottom": "1px solid #fde047",
@@ -785,11 +786,26 @@ def run_dashboard(
                     html.Span(
                         [
                             html.Strong("Entwicklungs-Tool - keine Haftung: "),
-                            "Dieses Tool wurde im Rahmen eines Forschungsprojekts an der FH Vorarlberg nach bestem Wissen und Gewissen entwickelt. "
+                            "Dieses Tool wurde im Rahmen eines Forschungsprojekts an der Fachhochschule Vorarlberg nach bestem Wissen und Gewissen entwickelt. "
                             "Die Simulationsergebnisse dienen ausschließlich der Orientierung und erheben keinen Anspruch auf Vollständigkeit oder Richtigkeit. "
                             "Für wirtschaftliche Entscheidungen, die auf Basis dieser Ergebnisse getroffen werden, wird keine Haftung übernommen.",
                         ],
-                        style={"fontSize": "13px", "color": "#713f12", "lineHeight": "1.5"},
+                        style={"fontSize": "13px", "color": "#713f12", "lineHeight": "1.5", "flex": "1"},
+                    ),
+                    html.Button(
+                        "✕",
+                        id="dismiss-disclaimer",
+                        n_clicks=0,
+                        style={
+                            "background": "none",
+                            "border": "none",
+                            "fontSize": "18px",
+                            "color": "#713f12",
+                            "cursor": "pointer",
+                            "padding": "0 4px",
+                            "lineHeight": "1",
+                            "opacity": "0.6",
+                        },
                     ),
                 ],
             ),
@@ -1342,6 +1358,35 @@ def run_dashboard(
                     ),
                 ],
             ),
+            # ── Footer / Acknowledgment ──────────────────────────────────
+            html.Div(
+                style={
+                    "backgroundColor": COLOR["header"],
+                    "padding": "24px 40px",
+                    "marginTop": "32px",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "gap": "20px",
+                },
+                children=[
+                    html.Img(
+                        src="/assets/FFG_Logo.png",
+                        alt="FFG Logo",
+                        style={"height": "60px"},
+                    ),
+                    html.P(
+                        "We gratefully acknowledge the financial support from the Austrian Research "
+                        "Promotion Agency FFG for the Hub4FlECs project (COIN FFG 898053), which "
+                        "provided funding for the development of the software provided.",
+                        style={
+                            "color": "#cbd5e1",
+                            "fontSize": "13px",
+                            "margin": "0",
+                            "lineHeight": "1.5",
+                        },
+                    ),
+                ],
+            ),
         ],
     )
 
@@ -1352,6 +1397,14 @@ def run_dashboard(
     _netload_cache: _BoundedCache = _BoundedCache()
 
     # ── Callbacks ────────────────────────────────────────────────────────
+    @app.callback(
+        Output("disclaimer-banner", "style"),
+        Input("dismiss-disclaimer", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def dismiss_disclaimer(_):
+        return {"display": "none"}
+
     @app.callback(
         Output("upload-residual", "style"),
         Output("upload-load-gen", "style"),

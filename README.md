@@ -23,6 +23,8 @@ Try it out online: [homebattery.labs.fhv.at](https://homebattery.labs.fhv.at/)
 The main functions are located in the `src/` directory. For more information on usage and development, see [README_maintainer.md](README_maintainer.md).
 
 ## Acknowledgments
+<img src="FFG_Logo.png" alt="FFG Logo" width="200">
+
 We gratefully acknowledge the financial support from the Austrian Research Promotion Agency FFG for the Hub4FlECs project (COIN FFG 898053), which provided funding for the development of the software provided. https://projekte.ffg.at/projekt/4597880
 
 ## License
