@@ -55,6 +55,7 @@ class BessOptimizer:
         p_sell_kw = pulp.LpVariable.dicts("p_sell", P, 0)
         p_buy_kw  = pulp.LpVariable.dicts("p_buy", P, 0)
         y = pulp.LpVariable.dicts("y", P, 0, 1, cat="Binary")   # Lade-/Entlade-Exklusivität
+        g = pulp.LpVariable.dicts("g", P, 0, 1, cat="Binary")   # Netzrichtung: Bezug oder Einspeisung
 
         # Anfangs- und End-SOC festsetzen
         soc_init_kwh = soc_init_percent * capacity_kwh / 100.0
@@ -77,6 +78,17 @@ class BessOptimizer:
             model += p_ch_kw[p]  <= max_charge_kw * y[p]
             model += p_dis_kw[p] <= max_discharge_kw * (1 - y[p])
 
+        # Netzbezug und Netzeinspeisung duerfen nicht gleichzeitig stattfinden.
+        # Sonst kann das Modell bei negativen Preisen reine Netz-Arbitrage betreiben.
+        for p in P:
+            net_load = float(net_load_kw.iloc[p])
+            import_limit_kw = max(0.0, net_load) + max_charge_kw
+            export_limit_kw = max(0.0, -net_load) + (
+                max_discharge_kw if allow_battery_feed_in else 0.0
+            )
+            model += p_buy_kw[p] <= import_limit_kw * g[p]
+            model += p_sell_kw[p] <= export_limit_kw * (1 - g[p])
+
         # Leistungsbilanz
         for p in P:
             model += (
@@ -84,12 +96,6 @@ class BessOptimizer:
                 ==
                 net_load_kw.iloc[p] + p_sell_kw[p] + p_ch_kw[p]
             )
-
-        # Batterie-Einspeisung verbieten: Verkauf nur aus (vorhergesagtem) PV-Ueberschuss
-        if not allow_battery_feed_in:
-            for p in P:
-                pv_surplus = max(0.0, -float(net_load_kw.iloc[p]))
-                model += p_sell_kw[p] <= pv_surplus
 
         # Zielfunktion
         if objective == "autarky":
