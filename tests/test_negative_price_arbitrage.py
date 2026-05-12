@@ -1,16 +1,10 @@
-from pathlib import Path
-
 import pandas as pd
 
 from control.optimize import BessOptimizer
 
 
 def test_optimize_milp_blocks_simultaneous_grid_arbitrage():
-    prices_file = Path(__file__).parent / ".." / "src" / "simulation" / "data" / "epex_prices.csv"
-    price_df = pd.read_csv(prices_file, index_col=0)
-    price_df.index = pd.to_datetime(price_df.index, utc=True).tz_convert("Europe/Vienna")
-
-    day = pd.Timestamp("2026-04-26", tz="Europe/Vienna")
+    day = pd.Timestamp("2025-01-01", tz="Europe/Vienna")
     act_range = pd.date_range(
         start=day,
         end=day + pd.DateOffset(days=1),
@@ -19,9 +13,9 @@ def test_optimize_milp_blocks_simultaneous_grid_arbitrage():
         inclusive="left",
     )
 
-    epex_prices = price_df.loc[act_range].iloc[:, 0]
-    price_sell = epex_prices - 0.006
-    price_buy = (epex_prices + 0.0144 + 0.06) * 1.2
+    price_buy = pd.Series(0.20, index=act_range)
+    price_sell = pd.Series(0.05, index=act_range)
+    price_sell.iloc[56] = 0.25
     net_load = pd.Series(0.0, index=act_range)
 
     result = BessOptimizer().optimize_milp(
@@ -42,5 +36,6 @@ def test_optimize_milp_blocks_simultaneous_grid_arbitrage():
 
     simultaneous_grid_flow = (result["p_buy_kw"] > 1e-9) & (result["p_sell_kw"] > 1e-9)
 
+    assert (price_sell > price_buy).any()
     assert result["milp_status"] == "Optimal"
     assert not simultaneous_grid_flow.any()
