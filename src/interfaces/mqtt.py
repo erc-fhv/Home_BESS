@@ -33,6 +33,16 @@ class Victron_Mqtt_Reader:
 
         self.connect()
 
+    @staticmethod
+    def _get_ca_cert_file() -> Path:
+        cert_file = Path(__file__).parent / "venus-ca.crt"
+        if cert_file.is_file():
+            return cert_file
+
+        raise FileNotFoundError(
+            f"Victron CA certificate not found: {cert_file}"
+        )
+
     def connect(self):
         """Connect to the MQTT broker and start the loop."""
 
@@ -41,7 +51,7 @@ class Victron_Mqtt_Reader:
             protocol=mqtt.MQTTv311,
         )
         self.client.username_pw_set(self.username, self.pw)
-        cert_file = Path(__file__).parent / "venus-ca.crt"
+        cert_file = self._get_ca_cert_file()
         self.client.tls_set(
             ca_certs= str(cert_file),  # Victron CA certificate
             cert_reqs=ssl.CERT_REQUIRED
