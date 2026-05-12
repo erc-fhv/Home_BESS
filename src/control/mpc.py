@@ -2,11 +2,11 @@ from pathlib import Path
 import time
 import tomllib
 import pandas as pd
-import numpy as np
 
 from interfaces.mqtt import Victron_Mqtt_Reader
 from interfaces.get_day_ahead_prices import DayAheadPrice
 from interfaces.get_weather_data import WeatherDataRetriever
+from interfaces.github_issue_creator import GithubIssueCreator
 from forecasting.forecasting import ForecastingModel
 from control.optimize import BessOptimizer
 
@@ -26,10 +26,12 @@ class MpcController:
         self.output_file_timestamp = pd.Timestamp.now(tz="Europe/Berlin")
         set_netload_kw = None
         next_fast_cycle = next_exec_time_15min + pd.Timedelta(seconds=fast_period)
+        user_notifier = GithubIssueCreator()
 
         while True:
             try:
                 current_time = pd.Timestamp.now(tz="Europe/Berlin")
+                user_notifier.on_loop_success()
 
                 # --- Run every 15 minutes ---
                 if current_time >= next_exec_time_15min:
@@ -83,9 +85,7 @@ class MpcController:
                     try:
                         act_netload_w = victron_mqtt_reader.get_latest_value("netload_read")
                         act_netload_kw = act_netload_w / 1000.0
-                        if not np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2):
-                            print(f"Warning: Set net load {set_netload_kw:.2f} kW does not match " + \
-                                f"actual net load {act_netload_kw:.2f} kW.")
+                        user_notifier.handle_netload_check(set_netload_kw, act_netload_kw, current_time)
                         next_fast_cycle += pd.Timedelta(seconds=fast_period)
                     except Exception as e:
                         print(f"Error reading actual net load. Wait and retry. Error: {e}")
@@ -96,6 +96,7 @@ class MpcController:
             except Exception as e:
                 print(f"Error in MPC Controller. Wait and retry. Error: {e}")
                 victron_mqtt_reader.stop_heartbeat()
+                user_notifier.handle_loop_exception(e)
                 time.sleep(20)
 
     def save_results(
