@@ -11,7 +11,7 @@ class GithubIssueCreator:
     def __init__(
             self,
             notification_threshold_minutes: int = 30,
-            do_github_testing: bool = True,
+            do_github_testing: bool = False,
             ):
 
         pw_file = Path(__file__).parent.parent.parent.parent / ".json"
