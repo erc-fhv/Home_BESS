@@ -5,6 +5,7 @@ import time
 import threading
 import paho.mqtt.client as mqtt
 import ssl
+import numpy as np
 
 class Victron_Mqtt_Reader:
     def __init__(self):
@@ -114,16 +115,17 @@ class Victron_Mqtt_Reader:
 
         self.latest_packets[msg.topic] = self.latest_packets[msg.topic].get("value")
 
-    def get_latest_value(self, value_type:str, timeout_sec:int=10):
+    def get_latest_value(self, value_type:str, timeout_sec:int=20):
         """
         Return the latest value to a given topic, e.g. "soc_percent".
+        Or return np.nan if no value received within timeout.
         """
 
         if value_type not in self.topics:
             raise ValueError((f"Invalid value type: {value_type}. Valid types are: "
                              f"{list(self.topics.keys())}"))
 
-        ret_value = None
+        ret_value = np.nan
         topic = self.topics[value_type]
         self.client.subscribe(topic)
         self.send_keepalive(self.client)
@@ -136,9 +138,6 @@ class Victron_Mqtt_Reader:
                 break
             else:
                 time.sleep(0.1)  # Avoid busy waiting
-
-        assert ret_value is not None, \
-            f"Timeout: No value received for topic {topic} within {timeout_sec} seconds."
 
         return ret_value
 

@@ -2,6 +2,7 @@ from pathlib import Path
 import time
 import tomllib
 import pandas as pd
+import numpy as np
 
 from interfaces.mqtt import Victron_Mqtt_Reader
 from interfaces.get_day_ahead_prices import DayAheadPrice
@@ -31,7 +32,6 @@ class MpcController:
         while True:
             try:
                 current_time = pd.Timestamp.now(tz="Europe/Berlin")
-                user_notifier.on_loop_success()
 
                 # --- Run every 15 minutes ---
                 if current_time >= next_exec_time_15min:
@@ -39,6 +39,7 @@ class MpcController:
                     my_config = self.load_config()
 
                     act_soc_percent = victron_mqtt_reader.get_latest_value("soc_percent")
+                    assert not np.isnan(act_soc_percent), "Failed to get soc_percent from MQTT."
 
                     price_sell_eur_kwh, price_buy_eur_kwh = DayAheadPrice.get_prices(
                         "vkw_dyn", start_date=current_time.floor("15min"))
@@ -76,19 +77,18 @@ class MpcController:
 
                     victron_mqtt_reader.start_heartbeat()
 
+                    user_notifier.on_loop_success()
+
                     next_exec_time_15min = current_time.floor("15min") + pd.Timedelta(minutes=15)
 
                     next_fast_cycle = current_time + pd.Timedelta(seconds=fast_period)
 
                 # --- Run every fast_period seconds ---
                 elif current_time >= next_fast_cycle:
-                    try:
-                        act_netload_w = victron_mqtt_reader.get_latest_value("netload_read")
-                        act_netload_kw = act_netload_w / 1000.0
-                        user_notifier.handle_netload_check(set_netload_kw, act_netload_kw, current_time)
-                        next_fast_cycle += pd.Timedelta(seconds=fast_period)
-                    except Exception as e:
-                        print(f"Error reading actual net load. Wait and retry. Error: {e}")
+                    next_fast_cycle += pd.Timedelta(seconds=fast_period)
+                    act_netload_w = victron_mqtt_reader.get_latest_value("netload_read")
+                    act_netload_kw = act_netload_w / 1000.0
+                    user_notifier.handle_netload_check(set_netload_kw, act_netload_kw, current_time)
 
                 else:
                     time.sleep(1)  # prevent CPU overload
