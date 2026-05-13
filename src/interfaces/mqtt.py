@@ -68,7 +68,7 @@ class Victron_Mqtt_Reader:
         if rc == 0:
             self.start_heartbeat()
         else:
-            raise ConnectionError(f"Failed to connect to MQTT broker. Code: {rc}")
+            print(f"Failed to connect to MQTT broker. Code: {rc}. Will retry...")
 
     def start_heartbeat(self):
         """
