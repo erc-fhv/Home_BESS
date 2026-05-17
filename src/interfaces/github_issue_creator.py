@@ -47,7 +47,8 @@ class GithubIssueCreator:
                         f"Errors ongoing since {self._exception_since}."
                     ),
                 )
-                self._exception_since = now  # reset to avoid repeated issues
+                # Set to high value to avoid repeated issues
+                self._exception_since = now + pd.Timedelta(days=365)
             except Exception as gh_err:
                 print(f"Failed to create GitHub issue: {gh_err}")
 
@@ -71,7 +72,8 @@ class GithubIssueCreator:
                         f"Mismatch ongoing since {self._netload_mismatch_since}."
                     ),
                 )
-                self._netload_mismatch_since = current_time  # reset to avoid repeated issues
+                # Set to high value to avoid repeated issues
+                self._netload_mismatch_since = current_time + pd.Timedelta(days=365)
         else:
             self._netload_mismatch_since = None
 
