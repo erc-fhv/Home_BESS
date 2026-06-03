@@ -84,7 +84,6 @@ class DayAheadPrice:
             price_sell = pd.Series(fix_price_sell, index=epex_prices.index)
             price_buy  = pd.Series((fix_price_buy + grid_fee) * (1 + vat),
                 index=epex_prices.index)
-
         else:
             raise ValueError(f"Unsupported price type: {price_type}")
 
