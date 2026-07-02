@@ -87,25 +87,24 @@ BTN = {
 HELP_TEXT = """
 ### Über dieses Tool
 
-Dieses Web-Tool bewertet die **finanzielle Rentabilität von Batteriespeichern** für Haushalte mit bestehenden PV- und Lastprofilen. Es ermöglicht eine transparente Entscheidungsgrundlage vor der Anschaffung eines Speichers.
+Dieses Web-Tool bewertet die finanzielle Rentabilität von Batteriespeichern für Haushalte mit bestehenden PV- und Lastprofilen. Es ermöglicht eine transparente Entscheidungsgrundlage vor der Anschaffung eines Speichers.
 
-**Voraussetzung:** 15-Minuten-Profile von PV-Erzeugung und/oder Netzbezug (Residuallast).
+**Voraussetzung:** 15-Minuten-Profile von PV-Erzeugung und Netzbezug. Beides ohne Einfluss von Batteriespeicher. Diese PV-Erzeugung und Netzbezug kann entweder separt hochgeladen werden oder als Residuallast (PV minus Last) in einer Datei. Das Tool berechnet dann die optimale Batterie-Steuerung und den daraus resultierenden Gewinn.
 
 **Anleitung:**
 
-1. **Daten hochladen:** Im Bereich "Daten Input" entweder eine einzelne Residuallast-Datei (PV minus Last) oder getrennte Last- und PV-Profile hochladen. Unterstützt werden VKW-Online-Exporte sowie eigene CSV-Dateien mit Zeitstempel und Leistungswerten in kW.
-2. **Steuerung wählen:**
-   - *Mathematische Optimierung (MILP)* – das theoretisch maximal erreichbare Ergebnis pro Tag
-   - *PV-Überschussladen* – die standardmäßig verfügbare Regelung
-   - *Ohne Batterie* – Referenzfall ohne Speicher
-3. **Preismodell wählen:** Standardmäßig ist der VKW-dynamische Preis von 2026 hinterlegt. Alternativ kann ein Fixpreis-Modell verwendet werden.
-4. **Batterie einstellen:** Kapazität, Lade-/Entladeleistung, SOC-Grenzen und Wirkungsgrade anpassen.
-5. **Tagesansicht:** Mit den Pfeiltasten durch einzelne Tage navigieren und detaillierte Verläufe (Preise, Last, SOC, Netzfluss, Batterieleistung) betrachten.
-6. **Gesamtsimulation:** Im entsprechenden Reiter den gesamten Zeitraum berechnen. Angezeigt werden kumulierter Gewinn, monatliche Gewinne und Energieflüsse sowie Batteriezyklen.
+1. Daten hochladen: Im Bereich "Daten Input" entweder eine einzelne Residuallast-Datei (PV minus Last) oder getrennte Last- und PV-Profile hochladen. Unterstützt werden VKW-Online-Exporte sowie eigene CSV-Dateien mit Zeitstempel und Leistungswerten in kW. Per Default wird beispielhaft ein realer PV- und Lastdatensatz eines Haushalts aus dem Jahr 2025 geladen.
+2. Steuerung wählen:
+   - Mathematische Optimierung (MILP) - das theoretisch maximal erreichbare Ergebnis pro Tag
+   - PV-Überschussladen - die standardmäßig verfügbare Regelung. Rechts oberhalb wird der finanzielle Tagesgewinn (verkaufte minus eingekaufte Energie) angezeigt.
+   - Ohne Batterie - Referenzfall ohne Speicher
+3. Preismodell wählen: Standardmäßig ist der VKW-dynamische Preis von 2026 hinterlegt. Durch andere Offsets können aber auch andere dynamische Preismodelle simuliert werden.
+Alternativ kann auch ein Fixpreis-Modell verwendet werden.
+4. Batterie einstellen: Kapazität, Lade-/Entladeleistung, SOC-Grenzen und Wirkungsgrade anpassen.
+5. Tagesansicht: Mit den Pfeiltasten durch einzelne Tage navigieren und detaillierte Verläufe (Preise, Last, SOC, Netzfluss, Batterieleistung) betrachten.
+6. Gesamtsimulation: Im entsprechenden Reiter den gesamten Zeitraum berechnen. Angezeigt werden kumulierter Gewinn, monatliche Gewinne und Energieflüsse sowie Batteriezyklen.
 
-**Parameter:** Neben dem Energie-Gesamtgewinn (eingekaufte minus verkaufte Energie) werden Batteriezyklen, Netzbezug und Einspeisung ausgewertet.
-
-*Dieses Tool dient ausschließlich der Orientierung und wurde im Rahmen eines Forschungsprojekts an der FH Vorarlberg entwickelt.*
+*Dieses Tool dient ausschließlich der Orientierung und wurde im Rahmen eines FFG Forschungsprojekts an der FH Vorarlberg entwickelt.*
 """
 
 _socketio: SocketIO | None = None
