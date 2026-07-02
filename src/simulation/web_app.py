@@ -84,6 +84,30 @@ BTN = {
 }
 
 
+HELP_TEXT = """
+### Über dieses Tool
+
+Dieses Web-Tool bewertet die **finanzielle Rentabilität von Batteriespeichern** für Haushalte mit bestehenden PV- und Lastprofilen. Es ermöglicht eine transparente Entscheidungsgrundlage vor der Anschaffung eines Speichers.
+
+**Voraussetzung:** 15-Minuten-Profile von PV-Erzeugung und/oder Netzbezug (Residuallast).
+
+**Anleitung:**
+
+1. **Daten hochladen:** Im Bereich "Daten Input" entweder eine einzelne Residuallast-Datei (PV minus Last) oder getrennte Last- und PV-Profile hochladen. Unterstützt werden VKW-Online-Exporte sowie eigene CSV-Dateien mit Zeitstempel und Leistungswerten in kW.
+2. **Steuerung wählen:**
+   - *Mathematische Optimierung (MILP)* – das theoretisch maximal erreichbare Ergebnis pro Tag
+   - *PV-Überschussladen* – die standardmäßig verfügbare Regelung
+   - *Ohne Batterie* – Referenzfall ohne Speicher
+3. **Preismodell wählen:** Standardmäßig ist der VKW-dynamische Preis von 2026 hinterlegt. Alternativ kann ein Fixpreis-Modell verwendet werden.
+4. **Batterie einstellen:** Kapazität, Lade-/Entladeleistung, SOC-Grenzen und Wirkungsgrade anpassen.
+5. **Tagesansicht:** Mit den Pfeiltasten durch einzelne Tage navigieren und detaillierte Verläufe (Preise, Last, SOC, Netzfluss, Batterieleistung) betrachten.
+6. **Gesamtsimulation:** Im entsprechenden Reiter den gesamten Zeitraum berechnen. Angezeigt werden kumulierter Gewinn, monatliche Gewinne und Energieflüsse sowie Batteriezyklen.
+
+**Parameter:** Neben dem Energie-Gesamtgewinn (eingekaufte minus verkaufte Energie) werden Batteriezyklen, Netzbezug und Einspeisung ausgewertet.
+
+*Dieses Tool dient ausschließlich der Orientierung und wurde im Rahmen eines Forschungsprojekts an der FH Vorarlberg entwickelt.*
+"""
+
 _socketio: SocketIO | None = None
 
 
@@ -747,25 +771,48 @@ def run_dashboard(
                                "fontSize": "22px", "fontWeight": "700",
                                "letterSpacing": "-0.3px"},
                     ),
-                    html.A(
-                        # GitHub SVG icon (Octicon mark-github)
-                        [
-                            html.Img(
-                                src="https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/github.svg",
-                                style={"height": "24px", "width": "24px",
-                                       "filter": "invert(1)"},
+                    html.Div(
+                        style={"display": "flex", "alignItems": "center", "gap": "8px"},
+                        children=[
+                            html.Button(
+                                "Hilfe",
+                                id="help-btn",
+                                n_clicks=0,
+                                title="Hilfe und Dokumentation",
+                                style={
+                                    "background": "none",
+                                    "border": "1px solid rgba(255,255,255,0.3)",
+                                    "color": "#fff",
+                                    "padding": "6px 14px",
+                                    "borderRadius": "8px",
+                                    "cursor": "pointer",
+                                    "fontSize": "13px",
+                                    "fontWeight": "500",
+                                    "opacity": "0.8",
+                                    "transition": "opacity 0.2s",
+                                },
                             ),
-                            html.Span("Open Source", style={
-                                "color": "#fff", "fontSize": "13px",
-                                "marginLeft": "6px", "fontWeight": "500",
-                            }),
+                            html.A(
+                                # GitHub SVG icon (Octicon mark-github)
+                                [
+                                    html.Img(
+                                        src="https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/github.svg",
+                                        style={"height": "24px", "width": "24px",
+                                               "filter": "invert(1)"},
+                                    ),
+                                    html.Span("Open Source", style={
+                                        "color": "#fff", "fontSize": "13px",
+                                        "marginLeft": "6px", "fontWeight": "500",
+                                    }),
+                                ],
+                                href="https://github.com/erc-fhv/Home_BESS",
+                                target="_blank",
+                                title="GitHub Repository",
+                                style={"display": "flex", "alignItems": "center",
+                                       "gap": "2px", "textDecoration": "none",
+                                       "opacity": "0.8", "transition": "opacity 0.2s"},
+                            ),
                         ],
-                        href="https://github.com/erc-fhv/Home_BESS",
-                        target="_blank",
-                        title="GitHub Repository",
-                        style={"display": "flex", "alignItems": "center",
-                               "gap": "2px", "textDecoration": "none",
-                               "opacity": "0.8", "transition": "opacity 0.2s"},
                     ),
                 ],
             ),
@@ -1358,6 +1405,49 @@ def run_dashboard(
                     ),
                 ],
             ),
+            # ── Help Modal ────────────────────────────────────────────────
+            html.Div(
+                id="help-modal",
+                style={"display": "none",
+                       "position": "fixed",
+                       "top": 0, "left": 0, "right": 0, "bottom": 0,
+                       "backgroundColor": "rgba(0,0,0,0.5)",
+                       "zIndex": 1000,
+                       "alignItems": "center",
+                       "justifyContent": "center"},
+                children=[
+                    html.Div(
+                        style={
+                            "backgroundColor": "#fff",
+                            "borderRadius": "12px",
+                            "padding": "32px",
+                            "maxWidth": "640px",
+                            "maxHeight": "80vh",
+                            "overflow": "auto",
+                            "boxShadow": "0 8px 32px rgba(0,0,0,0.2)",
+                        },
+                        children=[
+                            html.Div(
+                                style={"display": "flex", "justifyContent": "flex-end"},
+                                children=html.Button(
+                                    "✕",
+                                    id="close-help",
+                                    n_clicks=0,
+                                    style={
+                                        "background": "none",
+                                        "border": "none",
+                                        "fontSize": "20px",
+                                        "cursor": "pointer",
+                                        "color": COLOR["text_light"],
+                                        "padding": "0 4px",
+                                    },
+                                ),
+                            ),
+                            dcc.Markdown(HELP_TEXT),
+                        ],
+                    ),
+                ],
+            ),
             # ── Footer / Acknowledgment ──────────────────────────────────
             html.Div(
                 style={
@@ -1403,6 +1493,28 @@ def run_dashboard(
         prevent_initial_call=True,
     )
     def dismiss_disclaimer(_):
+        return {"display": "none"}
+
+    # ── Help Modal Toggle ──────────────────────────────────────────
+    @app.callback(
+        Output("help-modal", "style"),
+        Input("help-btn", "n_clicks"),
+        Input("close-help", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def toggle_help(help_n, close_n):
+        ctx = callback_context
+        if not ctx.triggered:
+            raise PreventUpdate
+        triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if triggered_id == "help-btn":
+            return {"display": "flex",
+                    "position": "fixed",
+                    "top": 0, "left": 0, "right": 0, "bottom": 0,
+                    "backgroundColor": "rgba(0,0,0,0.5)",
+                    "zIndex": 1000,
+                    "alignItems": "center",
+                    "justifyContent": "center"}
         return {"display": "none"}
 
     @app.callback(
