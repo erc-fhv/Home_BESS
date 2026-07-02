@@ -775,21 +775,26 @@ def run_dashboard(
                         style={"display": "flex", "alignItems": "center", "gap": "8px"},
                         children=[
                             html.Button(
-                                "Hilfe",
+                                [
+                                    html.Img(
+                                        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E",
+                                        style={"height": "24px", "width": "24px"},
+                                    ),
+                                    html.Span("Hilfe", style={
+                                        "color": "#fff", "fontSize": "13px",
+                                        "marginLeft": "6px", "fontWeight": "500",
+                                    }),
+                                ],
                                 id="help-btn",
                                 n_clicks=0,
                                 title="Hilfe und Dokumentation",
                                 style={
-                                    "background": "none",
-                                    "border": "1px solid rgba(255,255,255,0.3)",
-                                    "color": "#fff",
-                                    "padding": "6px 14px",
-                                    "borderRadius": "8px",
-                                    "cursor": "pointer",
-                                    "fontSize": "13px",
-                                    "fontWeight": "500",
-                                    "opacity": "0.8",
-                                    "transition": "opacity 0.2s",
+                                    "display": "flex", "alignItems": "center",
+                                    "gap": "2px", "cursor": "pointer",
+                                    "opacity": "0.8", "transition": "opacity 0.2s",
+                                    "background": "none", "border": "none",
+                                    "padding": "0",
+                                    "fontFamily": "Inter, system-ui, -apple-system, sans-serif",
                                 },
                             ),
                             html.A(
