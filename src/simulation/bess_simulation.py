@@ -53,7 +53,7 @@ class Bess:
         verbose: bool = False,
         control_algorithm: str = "model-predictive-control",
         soc_init_percent: float = 50.0,
-        allow_feed_in: bool = True,
+        pv_only_charging: bool = False,
         objective: str = "profit",
         ) -> dict[str, pd.Series]:
         """Run the BESS optimization for a given day and return the results as a dictionary."""
@@ -132,7 +132,7 @@ class Bess:
                 eta_discharge=self.eta_discharge,
                 soc_max_percent=100.0,
                 verbose=verbose,
-                allow_battery_feed_in=allow_feed_in,
+                pv_only_charging=pv_only_charging,
                 objective=objective,
             )
 
@@ -157,7 +157,7 @@ class Bess:
         verbose: bool = False,
         progress_callback: Callable | None = None,
         control_algorithm: str = "model-predictive-control",
-        allow_feed_in: bool = True,
+        pv_only_charging: bool = False,
         objective: str = "profit",
     ) -> pd.DataFrame:
         """Führt die Simulation für jeden Tag in [start_day, end_day] aus."""
@@ -184,7 +184,7 @@ class Bess:
                 verbose=verbose,
                 control_algorithm=control_algorithm,
                 soc_init_percent=soc_init,
-                allow_feed_in=allow_feed_in,
+                pv_only_charging=pv_only_charging,
                 objective=objective,
                 )
             rows.append(lp_results)

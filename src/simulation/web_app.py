@@ -158,7 +158,7 @@ def _run_year_sim_job(
             verbose=False,
             progress_callback=_on_progress,
             control_algorithm=params.get("control_algorithm", "model-predictive-control"),
-            allow_feed_in=params.get("allow_feed_in", True),
+            pv_only_charging=params.get("pv_only_charging", False),
             objective=params.get("objective", "profit"),
         )
 
@@ -959,9 +959,9 @@ def run_dashboard(
                                     "borderTop": f"1px solid {COLOR['border']}",
                                     "margin": "12px 0"}),
                                 dcc.Checklist(
-                                    id="allow-feed-in",
+                                    id="pv-only-charging",
                                     options=[{
-                                        "label": " Batterie-Einspeisung vermeiden",
+                                        "label": " Nur PV-Strom zum Laden verwenden",
                                         "value": "yes",
                                     }],
                                     value=[],
@@ -1426,7 +1426,7 @@ def run_dashboard(
         return {"display": "block", "marginTop": "10px"}, {"display": "none"}
 
     @app.callback(
-        Output("allow-feed-in", "options"),
+        Output("pv-only-charging", "options"),
         Output("opt-objective", "options"),
         Output("battery-capacity", "disabled"),
         Output("battery-max-charge", "disabled"),
@@ -1441,7 +1441,7 @@ def run_dashboard(
         disabled = algorithm != "model-predictive-control"
         no_battery = algorithm == "no-control"
         feed_in_opts = [{
-            "label": " Batterie-Einspeisung vermeiden",
+            "label": " Nur PV-Strom zum Laden (kein Netzbezug)",
             "value": "yes",
             "disabled": disabled,
         }]
@@ -1520,7 +1520,7 @@ def run_dashboard(
         Input("battery-eta-charge", "value"),
         Input("battery-eta-discharge", "value"),
         Input("control-algorithm", "value"),
-        Input("allow-feed-in", "value"),
+        Input("pv-only-charging", "value"),
         Input("opt-objective", "value"),
         State("input-mode", "value"),
         State("session-id", "data"),
@@ -1532,7 +1532,7 @@ def run_dashboard(
                      fix_price_buy_cent, fix_price_sell_cent,
                      battery_capacity, battery_max_charge, battery_max_discharge,
                      battery_soc_min, battery_soc_final, battery_eta_charge, battery_eta_discharge,
-                     control_algorithm, allow_feed_in_val, opt_objective,
+                     control_algorithm, pv_only_charging_val, opt_objective,
                      input_mode, session_id):
 
         ctx = callback_context
@@ -1669,7 +1669,7 @@ def run_dashboard(
             fix_price_buy_eur_kwh=fix_price_buy_eur,
             fix_price_sell_eur_kwh=fix_price_sell_eur,
             verbose=False,
-            allow_feed_in="yes" not in (allow_feed_in_val or []),
+            pv_only_charging="yes" in (pv_only_charging_val or []),
             objective=opt_objective or "profit",
         )
 
@@ -1772,7 +1772,7 @@ def run_dashboard(
         State("battery-eta-charge", "value"),
         State("battery-eta-discharge", "value"),
         State("control-algorithm", "value"),
-        State("allow-feed-in", "value"),
+        State("pv-only-charging", "value"),
         State("opt-objective", "value"),
         State("session-id", "data"),
         prevent_initial_call=True,
@@ -1796,7 +1796,7 @@ def run_dashboard(
         battery_eta_charge,
         battery_eta_discharge,
         control_algorithm,
-        allow_feed_in_val,
+        pv_only_charging_val,
         opt_objective,
         session_id,
     ):
@@ -1833,7 +1833,7 @@ def run_dashboard(
             "battery_eta_charge": battery_eta_charge or 0.0,
             "battery_eta_discharge": battery_eta_discharge or 0.0,
             "control_algorithm": control_algorithm or "model-predictive-control",
-            "allow_feed_in": "yes" not in (allow_feed_in_val or []),
+            "pv_only_charging": "yes" in (pv_only_charging_val or []),
             "objective": opt_objective or "profit",
         }
 

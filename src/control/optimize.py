@@ -21,7 +21,7 @@ class BessOptimizer:
         eta_discharge: float,
         soc_max_percent: float = 100.0,
         verbose: bool = False,
-        allow_battery_feed_in: bool = True,
+        pv_only_charging: bool = False,
         objective: str = "profit",
         ) -> dict[str, pd.Series]:
         """
@@ -83,11 +83,15 @@ class BessOptimizer:
         for p in P:
             net_load = float(net_load_kw.iloc[p])
             import_limit_kw = max(0.0, net_load) + max_charge_kw
-            export_limit_kw = max(0.0, -net_load) + (
-                max_discharge_kw if allow_battery_feed_in else 0.0
-            )
+            export_limit_kw = max(0.0, -net_load) + max_discharge_kw
             model += p_buy_kw[p] <= import_limit_kw * g[p]
             model += p_sell_kw[p] <= export_limit_kw * (1 - g[p])
+
+        # Nur PV-Strom zum Laden: Batterie-Ladung auf aktuellen PV-Überschuss begrenzen
+        if pv_only_charging:
+            for p in P:
+                pv_surplus_kw = max(0.0, -float(net_load_kw.iloc[p]))
+                model += p_ch_kw[p] <= pv_surplus_kw
 
         # Leistungsbilanz
         for p in P:

@@ -30,7 +30,6 @@ def test_optimize_milp_blocks_simultaneous_grid_arbitrage():
         soc_min_percent=10.0,
         eta_charge=0.936,
         eta_discharge=0.936,
-        allow_battery_feed_in=True,
         objective="profit",
     )
 
