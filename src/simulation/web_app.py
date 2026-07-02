@@ -772,7 +772,7 @@ def run_dashboard(
                                "letterSpacing": "-0.3px"},
                     ),
                     html.Div(
-                        style={"display": "flex", "alignItems": "center", "gap": "20px"},
+                        style={"display": "flex", "alignItems": "center", "gap": "40px"},
                         children=[
                             html.Button(
                                 [
