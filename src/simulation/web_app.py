@@ -961,7 +961,7 @@ def run_dashboard(
                                 dcc.Checklist(
                                     id="pv-only-charging",
                                     options=[{
-                                        "label": " Nur PV-Strom zum Laden verwenden",
+                                        "label": " Nur mit PV-Strom laden",
                                         "value": "yes",
                                     }],
                                     value=[],
@@ -1441,7 +1441,7 @@ def run_dashboard(
         disabled = algorithm != "model-predictive-control"
         no_battery = algorithm == "no-control"
         feed_in_opts = [{
-            "label": " Nur PV-Strom zum Laden (kein Netzbezug)",
+            "label": " Nur mit PV-Strom laden",
             "value": "yes",
             "disabled": disabled,
         }]
