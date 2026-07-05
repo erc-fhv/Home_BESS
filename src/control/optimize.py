@@ -23,6 +23,8 @@ class BessOptimizer:
         verbose: bool = False,
         pv_only_charging: bool = False,
         objective: str = "profit",
+        import_limit_kw: float = 20.0,
+        export_limit_kw: float = 11.0,
         ) -> dict[str, pd.Series]:
         """
         Optimizes the BESS operation for a given day using Mixed-Integer Linear Programming (MILP).
@@ -81,9 +83,6 @@ class BessOptimizer:
         # Netzbezug und Netzeinspeisung duerfen nicht gleichzeitig stattfinden.
         # Sonst kann das Modell bei negativen Preisen reine Netz-Arbitrage betreiben.
         for p in P:
-            net_load = float(net_load_kw.iloc[p])
-            import_limit_kw = max(0.0, net_load) + max_charge_kw
-            export_limit_kw = max(0.0, -net_load) + max_discharge_kw
             model += p_buy_kw[p] <= import_limit_kw * g[p]
             model += p_sell_kw[p] <= export_limit_kw * (1 - g[p])
 
