@@ -107,7 +107,7 @@ class ForecastingModel:
 
         # Evaluate the model using nMAE
         nmae = self.calculate_nmae(net_load_profile.values, predictions)
-        print(f"nMae: {nmae:.2f}%")
+        print(f"Train nMae: {nmae:.2f}%")
 
         # Plot actual vs predicted load profile
         plt.figure(figsize=(12, 6))
