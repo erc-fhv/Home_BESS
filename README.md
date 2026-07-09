@@ -8,7 +8,7 @@ This repository contains two complementary projects:
 
 # Related Paper and Citation
 
-A detailed description of the real-world MPC implementation and an extensive evaluation can be found in our paper (currently available on arXiv):
+A detailed description of the real-world MPC implementation and an extensive evaluation can be found in our paper (soon available on arXiv):
 
 > https://arxiv.org/abs/XXXX
 
