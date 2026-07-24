@@ -55,6 +55,7 @@ class MpcController:
                             raise RuntimeError("Entsoe data is too old and " + \
                                 "no new data available.") from e
                         else:
+                            print("Entsoe not working, using old prices.")
                             price_sell_eur_kwh, price_buy_eur_kwh = prices_old
 
                     assert isinstance(price_sell_eur_kwh.index, pd.DatetimeIndex)
