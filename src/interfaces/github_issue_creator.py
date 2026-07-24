@@ -43,7 +43,7 @@ class GithubIssueCreator:
                     title="[Home BESS] MPC Controller errors for >30 min",
                     body=(
                         f"An error occurred in the MPC main loop at {now}:\n\n"
-                        f"{type(error).__name__}: {error}\n\n"
+                        f"{type(error).__name__}:\n\n"
                         f"Errors ongoing since {self._exception_since}."
                     ),
                 )
