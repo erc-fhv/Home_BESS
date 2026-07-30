@@ -56,7 +56,8 @@ class MpcController:
                                 "no new data available.") from e
                         else:
                             print("Entsoe not working, using old prices.")
-                            price_sell_eur_kwh, price_buy_eur_kwh = prices_old
+                            price_sell_eur_kwh = prices_old[0][current_time.floor("15min"):]
+                            price_buy_eur_kwh = prices_old[1][current_time.floor("15min"):]
 
                     assert isinstance(price_sell_eur_kwh.index, pd.DatetimeIndex)
                     assert current_time - pd.Timedelta(minutes=15) < price_sell_eur_kwh.index[0] \
