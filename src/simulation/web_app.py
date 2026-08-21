@@ -2,6 +2,7 @@ import base64
 import collections
 import copy
 from io import StringIO
+import re
 import threading
 import uuid
 
@@ -110,6 +111,11 @@ Alternativ kann auch ein Fixpreis-Modell verwendet werden.
 _socketio: SocketIO | None = None
 
 
+def _sanitize_error(message: str) -> str:
+    """Entfernt Query-Strings (alles ab '?') aus URLs, damit keine Tokens/Secrets angezeigt werden."""
+    return re.sub(r"(https?://[^\s?]+)\?[^\s]*", r"\1?[...]", str(message))
+
+
 def _run_year_sim_job(
     start_ts: pd.Timestamp,
     end_ts: pd.Timestamp,
@@ -206,7 +212,7 @@ def _run_year_sim_job(
             "total_days": total_days,
             "last_day": rows[-1]["date"] if rows else None,
             "rows": rows,
-            "error": str(exc),
+            "error": _sanitize_error(exc),
         }
         if _socketio is not None:
             _socketio.emit("sim_progress", error_state, room=session_id)
@@ -1673,13 +1679,13 @@ def run_dashboard(
                         df_load = parse_csv(load_contents)
                         status_load_out = [html.Span(f"✓ {len(df_load)} Messzeitpunkte geladen", style=_ok_style)]
                     except Exception as exc:
-                        status_load_out = [html.Span(f"✗ {exc}", style=_err_style)]
+                        status_load_out = [html.Span(f"✗ {_sanitize_error(exc)}", style=_err_style)]
                 if gen_contents:
                     try:
                         df_gen = parse_csv(gen_contents)
                         status_gen_out = [html.Span(f"✓ {len(df_gen)} Messzeitpunkte geladen", style=_ok_style)]
                     except Exception as exc:
-                        status_gen_out = [html.Span(f"✗ {exc}", style=_err_style)]
+                        status_gen_out = [html.Span(f"✗ {_sanitize_error(exc)}", style=_err_style)]
                 if df_load is not None and df_gen is not None:
                     net = (df_load["value_kw"] - df_gen["value_kw"]).fillna(0.0)
                     _netload_cache[_sid] = pd.DataFrame({"net_load_kw": net})
@@ -1708,9 +1714,9 @@ def run_dashboard(
                     profile_label_out = [html.Span("Aktuell verwendetes Lastprofil: Eigenes Profil",
                                                    style={"fontWeight": "600"})]
                 except Exception as exc:
-                    status_residual_out = [html.Span(f"✗ {exc}", style=_err_style)]
+                    status_residual_out = [html.Span(f"✗ {_sanitize_error(exc)}", style=_err_style)]
                     return (
-                        _make_error_figure(f"CSV konnte nicht eingelesen werden:<br>{exc}"),
+                        _make_error_figure(f"CSV konnte nicht eingelesen werden:<br>{_sanitize_error(exc)}"),
                         no_update, no_update, no_update, no_update,
                         no_update, no_update, no_update, no_update,
                         status_residual_out, status_load_out, status_gen_out,
@@ -1837,7 +1843,7 @@ def run_dashboard(
                 )
         except Exception as exc:
             return (
-                _make_error_figure(f"Simulation fehlgeschlagen:<br>{exc}"),
+                _make_error_figure(f"Simulation fehlgeschlagen:<br>{_sanitize_error(exc)}"),
                 act_day.date(), min_date.date(), max_date.date(),
                 min_date.date(), max_date.date(), year_start_out, year_end_out,
                 no_update,
