@@ -44,18 +44,20 @@ class MpcController:
 
                     try:
                         price_sell_eur_kwh, price_buy_eur_kwh = DayAheadPrice.get_prices(
-                            "vkw_dyn", start_date=current_time.floor("15min"))
+                            "vkw_dyn", start_date=current_time.floor("15min"),
+                            epex_source=my_config["prices"]["epex_source"])
                         prices_old = price_sell_eur_kwh, price_buy_eur_kwh
                     except Exception as e:
                         # If fetching new prices fails, check if we have old prices and if they
                         # are recent enough (within 6 hours). If not, raise an error.
                         if prices_old[0].empty or prices_old[1].empty:
-                            raise RuntimeError("Entsoe not working during first run.") from e
+                            raise RuntimeError("Price source not working during first run.") \
+                                from e
                         elif (current_time - prices_old[0].index[-1] > pd.Timedelta(hours=6)):
-                            raise RuntimeError("Entsoe data is too old and " + \
+                            raise RuntimeError("Price data is too old and " + \
                                 "no new data available.") from e
                         else:
-                            print("Entsoe not working, using old prices.")
+                            print("Price source not working, using old prices.")
                             price_sell_eur_kwh = prices_old[0][current_time.floor("15min"):]
                             price_buy_eur_kwh = prices_old[1][current_time.floor("15min"):]
 

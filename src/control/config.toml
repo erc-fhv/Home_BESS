@@ -1,6 +1,11 @@
 [mpc]
 interval_minutes = 15
 
+[prices]
+# Day-ahead price source: "entsoe" (ENTSO-E Transparency Platform, requires API key)
+# or "awattar" (aWATTar API, free, no key needed, AT/DE only)
+epex_source = "awattar"
+
 [battery]
 max_charge_kw = 8.0         # max = 3*4kW
 max_discharge_kw = 8.0      # max = 3*4kW

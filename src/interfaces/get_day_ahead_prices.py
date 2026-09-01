@@ -3,6 +3,8 @@ import json
 from entsoe import EntsoePandasClient
 import pandas as pd
 
+from interfaces.get_day_ahead_prices_awattar import AwattarPrice
+
 class DayAheadPrice:
     """Class to read out day-ahead electricity prices from the ENTSO-E Transparency Platform."""
 
@@ -63,6 +65,7 @@ class DayAheadPrice:
         price_type:str,
         store_to_file: Path | None = None,
         start_date: pd.Timestamp | None = None,
+        epex_source: str = "entsoe",
         epex_offset_buy: float = 0.0144,
         epex_offset_sell: float = 0.006,
         grid_fee: float = 0.06,
@@ -73,8 +76,16 @@ class DayAheadPrice:
         """Define sell and buy prices (in EUR/kWh)"""
 
         price_type = price_type.lower()
-        epex_prices = DayAheadPrice.get_epex_prices(store_to_file=store_to_file,
-            start_date=start_date)
+        epex_source = epex_source.lower()
+        epex_sources = {
+            "entsoe": DayAheadPrice.get_epex_prices,
+            "awattar": AwattarPrice.get_epex_prices,
+        }
+        try:
+            get_epex_prices = epex_sources[epex_source]
+        except KeyError as e:
+            raise ValueError(f"Unsupported epex_source: {epex_source}") from e
+        epex_prices = get_epex_prices(store_to_file=store_to_file, start_date=start_date)
 
         if price_type == "vkw_dyn":
             # VKW dynamische Preise in EUR/kWh
