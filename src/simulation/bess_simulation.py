@@ -3,7 +3,7 @@ from typing import Callable
 import pulp
 import pandas as pd
 
-from interfaces.get_day_ahead_prices import DayAheadPrice
+from interfaces.get_day_ahead_prices_awattar import AwattarPrice
 from control.optimize import BessOptimizer
 
 class Bess:
@@ -243,7 +243,7 @@ class Bess:
             last_ts = df_prices.index.max()
 
             if (last_ts + pd.Timedelta(minutes=15)) < now:
-                new_prices = DayAheadPrice.get_epex_prices(
+                new_prices = AwattarPrice.get_epex_prices(
                     country_code="AT",
                     start_date=last_ts,
                     end_date=now + pd.Timedelta(days=1),
