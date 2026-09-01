@@ -29,19 +29,32 @@ class AwattarPrice:
             # Price horizon is max. 1.5 days, so 2 days ensures we get all relevant prices
             end_date = start_date + pd.Timedelta(days=2)
 
-        # Readout day-ahead prices (aWATTar's fair-use limit is 100 requests/day)
+        # Readout day-ahead prices (aWATTar's fair-use limit is 100 requests/day).
+        # aWATTar's "start" filter drops any period starting before it, so a mid-hour
+        # start_date would silently skip the in-progress hourly period. Query from the
+        # top of the hour instead, and apply the real start_date further down.
         params = {
-            "start": int(start_date.tz_convert("UTC").timestamp() * 1000),
+            "start": int(start_date.floor("h").tz_convert("UTC").timestamp() * 1000),
             "end": int(end_date.tz_convert("UTC").timestamp() * 1000),
         }
         response = requests.get(AwattarPrice.BASE_URLS[country_code], params=params, timeout=10)
         response.raise_for_status()
         entries = response.json()["data"]
 
-        index = pd.DatetimeIndex(
+        starts = pd.DatetimeIndex(
             pd.to_datetime([entry["start_timestamp"] for entry in entries], unit="ms", utc=True)
         ).tz_convert("Europe/Vienna")
-        prices = pd.Series([entry["marketprice"] for entry in entries], index=index).sort_index()
+        ends = pd.DatetimeIndex(
+            pd.to_datetime([entry["end_timestamp"] for entry in entries], unit="ms", utc=True)
+        ).tz_convert("Europe/Vienna")
+        prices = pd.Series([entry["marketprice"] for entry in entries], index=starts).sort_index()
+
+        # aWATTar prices apply for their full market period (currently hourly). Upsample to a
+        # 15-minute grid via forward-fill so the series aligns with the MPC's 15-minute cadence,
+        # instead of e.g. only having a fresh value on the hour.
+        full_index = pd.date_range(starts.min(), ends.max(), freq="15min", inclusive="left")
+        prices = prices.reindex(full_index, method="ffill")
+
         prices = prices[(prices.index >= start_date) & (prices.index < end_date)]
 
         # Check the returned data
