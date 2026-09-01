@@ -15,8 +15,8 @@ from flask_socketio import SocketIO, join_room
 
 from simulation.bess_simulation import Bess
 
-# Day-ahead price source for the simulation dashboard: "entsoe" or "awattar"
-EPEX_SOURCE = "awattar"
+# Day-ahead price source for the simulation dashboard: "energycharts", "entsoe" or "awattar"
+EPEX_SOURCE = "energycharts"
 
 # Max possible sessions. Needed for server-side caching, in order to
 # have higher performance for slow devices.

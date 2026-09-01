@@ -2,9 +2,11 @@
 interval_minutes = 15
 
 [prices]
-# Day-ahead price source: "entsoe" (ENTSO-E Transparency Platform, requires API key)
-# or "awattar" (aWATTar API, free, no key needed, AT/DE only)
-epex_source = "awattar"
+# Day-ahead price source: "energycharts" (Energy-Charts/Fraunhofer ISE, free, no key
+# needed, true 15-min EPEX prices), "entsoe" (ENTSO-E Transparency Platform, requires
+# API key, true 15-min EPEX prices) or "awattar" (aWATTar API, free, no key needed,
+# AT/DE only, hourly prices only, upsampled to 15-min via forward-fill)
+epex_source = "energycharts"
 
 [battery]
 max_charge_kw = 8.0         # max = 3*4kW

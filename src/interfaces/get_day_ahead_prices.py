@@ -4,6 +4,7 @@ from entsoe import EntsoePandasClient
 import pandas as pd
 
 from interfaces.get_day_ahead_prices_awattar import AwattarPrice
+from interfaces.get_day_ahead_prices_energycharts import EnergyChartsPrice
 
 class DayAheadPrice:
     """Class to read out day-ahead electricity prices from the ENTSO-E Transparency Platform."""
@@ -65,7 +66,7 @@ class DayAheadPrice:
         price_type:str,
         store_to_file: Path | None = None,
         start_date: pd.Timestamp | None = None,
-        epex_source: str = "entsoe",
+        epex_source: str = "energycharts",
         epex_offset_buy: float = 0.0144,
         epex_offset_sell: float = 0.006,
         grid_fee: float = 0.06,
@@ -80,6 +81,7 @@ class DayAheadPrice:
         epex_sources = {
             "entsoe": DayAheadPrice.get_epex_prices,
             "awattar": AwattarPrice.get_epex_prices,
+            "energycharts": EnergyChartsPrice.get_epex_prices,
         }
         try:
             get_epex_prices = epex_sources[epex_source]

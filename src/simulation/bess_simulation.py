@@ -5,16 +5,18 @@ import pandas as pd
 
 from interfaces.get_day_ahead_prices import DayAheadPrice
 from interfaces.get_day_ahead_prices_awattar import AwattarPrice
+from interfaces.get_day_ahead_prices_energycharts import EnergyChartsPrice
 from control.optimize import BessOptimizer
 
 # Day-ahead price sources usable for Bess(epex_source=...)
 EPEX_SOURCES = {
     "entsoe": DayAheadPrice.get_epex_prices,
     "awattar": AwattarPrice.get_epex_prices,
+    "energycharts": EnergyChartsPrice.get_epex_prices,
 }
 
 class Bess:
-    def __init__(self, epex_source: str = "entsoe") -> None:
+    def __init__(self, epex_source: str = "energycharts") -> None:
 
         epex_source = epex_source.lower()
         if epex_source not in EPEX_SOURCES:
