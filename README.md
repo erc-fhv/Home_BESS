@@ -8,7 +8,7 @@ This repository contains two complementary projects:
 
 # Related Paper and Citation
 
-A detailed description of the real-world MPC implementation and an extensive evaluation can be found in our paper (soon available on arXiv):
+A detailed description of the real-world MPC implementation and an extensive evaluation can be found in our paper:
 
 > [energy.acm.org/eir/real-world-model-predictive-control-for-home-battery-systems-towards-closing-the-simulation-to-reality-gap](https://energy.acm.org/eir/real-world-model-predictive-control-for-home-battery-systems-towards-closing-the-simulation-to-reality-gap/)
 
