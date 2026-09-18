@@ -10,17 +10,20 @@ This repository contains two complementary projects:
 
 A detailed description of the real-world MPC implementation and an extensive evaluation can be found in our paper (soon available on arXiv):
 
-> https://arxiv.org/abs/XXXX
+> [energy.acm.org/eir/real-world-model-predictive-control-for-home-battery-systems-towards-closing-the-simulation-to-reality-gap](https://energy.acm.org/eir/real-world-model-predictive-control-for-home-battery-systems-towards-closing-the-simulation-to-reality-gap/)
 
 If you use this repository in your research, please cite:
 
 ```bibtex
-@article{moosbrugger2026real,
-  title={Real-World Model Predictive Control for Home Battery Systems: Towards Closing the Simulation-to-Reality Gap},
-  author={Moosbrugger, Lukas and Seiler, Valentin and Wohlgenannt, Philipp and Ristov, Sashko and Kepplinger, Peter},
-  journal={arXiv preprint},
-  year={2026},
-  doi={10.48550/arXiv.XXX}
+@article{Moosbrugger2026,
+  author  = {Lukas Moosbrugger and Valentin Seiler and Philipp Wohlgenannt and Sashko Ristov and Peter Kepplinger},
+  title   = {Real-World Model Predictive Control for Home Battery Systems: Towards Closing the Simulation-to-Reality Gap},
+  journal = {ACM SIGEnergy Energy Informatics Review},
+  volume  = {6},
+  number  = {3},
+  month   = sep,
+  year    = {2026},
+  url     = {https://energy.acm.org/eir/real-world-model-predictive-control-for-home-battery-systems-towards-closing-the-simulation-to-reality-gap/}
 }
 ````
 
