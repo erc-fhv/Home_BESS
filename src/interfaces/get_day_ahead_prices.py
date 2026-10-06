@@ -65,6 +65,7 @@ class DayAheadPrice:
     def get_epex_prices_with_fallback(
         epex_sources: list[str],
         start_date: pd.Timestamp | None = None,
+        end_date: pd.Timestamp | None = None,
         store_to_file: Path | None = None,
         ) -> pd.Series:
         """Return day-ahead Epex prices in EUR/kWh from the first source in epex_sources
@@ -82,7 +83,7 @@ class DayAheadPrice:
                 raise ValueError(f"Unsupported epex_source: {epex_source}")
             try:
                 prices = source_functions[epex_source](
-                    start_date=start_date, store_to_file=store_to_file)
+                    start_date=start_date, end_date=end_date, store_to_file=store_to_file)
                 if prices.empty:
                     raise ValueError("No prices returned.")
                 return prices

@@ -4,24 +4,13 @@ import pulp
 import pandas as pd
 
 from interfaces.get_day_ahead_prices import DayAheadPrice
-from interfaces.get_day_ahead_prices_awattar import AwattarPrice
-from interfaces.get_day_ahead_prices_energycharts import EnergyChartsPrice
 from control.optimize import BessOptimizer
 
-# Day-ahead price sources usable for Bess(epex_source=...)
-EPEX_SOURCES = {
-    "entsoe": DayAheadPrice.get_epex_prices,
-    "awattar": AwattarPrice.get_epex_prices,
-    "energycharts": EnergyChartsPrice.get_epex_prices,
-}
-
 class Bess:
-    def __init__(self, epex_source: str = "energycharts") -> None:
+    def __init__(self, epex_sources: list[str] = ("energycharts", "entsoe")) -> None:
 
-        epex_source = epex_source.lower()
-        if epex_source not in EPEX_SOURCES:
-            raise ValueError(f"Unsupported epex_source: {epex_source}")
-        self.epex_source = epex_source
+        # Day-ahead price sources, tried in the given order until one works
+        self.epex_sources = epex_sources
 
         self.capacity_kwh = None
         self.max_charge_kw = None
@@ -257,9 +246,8 @@ class Bess:
             last_ts = df_prices.index.max()
 
             if (last_ts + pd.Timedelta(minutes=15)) < now:
-                get_epex_prices = EPEX_SOURCES[self.epex_source]
-                new_prices = get_epex_prices(
-                    country_code="AT",
+                new_prices = DayAheadPrice.get_epex_prices_with_fallback(
+                    self.epex_sources,
                     start_date=last_ts,
                     end_date=now + pd.Timedelta(days=1),
                 )
@@ -278,6 +266,6 @@ class Bess:
         self.prices_epex_eur_kWh = self.prices_epex_eur_kWh.resample('15min').ffill()
 
 if __name__ == "__main__":
-    from simulation.web_app import run_dashboard, EPEX_SOURCE
-    bess = Bess(epex_source=EPEX_SOURCE)
+    from simulation.web_app import run_dashboard, EPEX_SOURCES
+    bess = Bess(epex_sources=EPEX_SOURCES)
     run_dashboard(bess)

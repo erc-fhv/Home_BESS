@@ -15,8 +15,8 @@ from flask_socketio import SocketIO, join_room
 
 from simulation.bess_simulation import Bess
 
-# Day-ahead price source for the simulation dashboard: "energycharts", "entsoe" or "awattar"
-EPEX_SOURCE = "energycharts"
+# Day-ahead price sources (in order of priority), shared with the MPC configuration
+EPEX_SOURCES = ["energycharts", "entsoe"]
 
 # Max possible sessions. Needed for server-side caching, in order to
 # have higher performance for slow devices.
@@ -131,7 +131,7 @@ def _run_year_sim_job(
     rows: list[dict] = []
     total_days = 0
     try:
-        worker_bess = Bess(epex_source=EPEX_SOURCE)
+        worker_bess = Bess(epex_sources=EPEX_SOURCES)
         worker_bess.netload_kw = df_energy_snapshot.copy()
         worker_bess.update_battery_params(
             capacity_kwh=params.get("battery_capacity", 30.72),
@@ -2072,7 +2072,7 @@ def run_dashboard(
 
 def create_application():
     """WSGI application factory. Used by Gunicorn."""
-    bess = Bess(epex_source=EPEX_SOURCE)
+    bess = Bess(epex_sources=EPEX_SOURCES)
     app = run_dashboard(bess)
     return app.server
 
