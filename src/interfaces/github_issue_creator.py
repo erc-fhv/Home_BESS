@@ -56,7 +56,10 @@ class GithubIssueCreator:
         self, set_netload_kw: float, act_netload_kw: float, current_time: pd.Timestamp
     ) -> None:
         """Check net load mismatch and create a GitHub issue after the threshold."""
-        if act_netload_kw != np.nan and not np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2):
+
+        if np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2) or pd.isna(act_netload_kw):
+            self._netload_mismatch_since = None
+        else:
             print(
                 f"Warning: Set net load {set_netload_kw:.2f} kW does not match "
                 f"actual net load {act_netload_kw:.2f} kW."
@@ -74,8 +77,6 @@ class GithubIssueCreator:
                 )
                 # Set to high value to avoid repeated issues
                 self._netload_mismatch_since = current_time + pd.Timedelta(days=365)
-        else:
-            self._netload_mismatch_since = None
 
     def _create_issue(self, title: str, body: str) -> None:
         """Create a GitHub issue with the given title and body."""
