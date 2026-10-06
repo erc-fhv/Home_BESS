@@ -16,7 +16,7 @@ dependencies = [
     "pytz",
     "lxml",
     "entsoe-py",
-    "pulp",
+    "pulp<4",  # pulp 4 removed LpVariable.dicts/PULP_CBC_CMD and no longer bundles CBC
     "plotly",
     "dash",
     "paho-mqtt",
