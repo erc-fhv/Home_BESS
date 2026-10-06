@@ -56,7 +56,7 @@ class GithubIssueCreator:
         self, set_netload_kw: float, act_netload_kw: float, current_time: pd.Timestamp
     ) -> None:
         """Check net load mismatch and create a GitHub issue after the threshold."""
-        if not np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2):
+        if act_netload_kw != np.nan and not np.isclose(act_netload_kw, set_netload_kw, rtol=1e-2):
             print(
                 f"Warning: Set net load {set_netload_kw:.2f} kW does not match "
                 f"actual net load {act_netload_kw:.2f} kW."

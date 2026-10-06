@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 from interfaces.mqtt import Victron_Mqtt_Reader
-from interfaces.get_day_ahead_prices import DayAheadPrice
+from interfaces.get_day_ahead_prices import CachedDayAheadPrice
 from interfaces.get_weather_data import WeatherDataRetriever
 from interfaces.github_issue_creator import GithubIssueCreator
 from forecasting.forecasting import ForecastingModel
@@ -28,7 +28,7 @@ class MpcController:
         set_netload_kw = None
         next_fast_cycle = next_exec_time_15min + pd.Timedelta(seconds=fast_period)
         user_notifier = GithubIssueCreator()
-        prices_old = pd.Series(dtype=float), pd.Series(dtype=float)
+        price_cache = CachedDayAheadPrice()
 
         while True:
             try:
@@ -42,29 +42,8 @@ class MpcController:
                     act_soc_percent = victron_mqtt_reader.get_latest_value("soc_percent")
                     assert not np.isnan(act_soc_percent), "Failed to get soc_percent from MQTT."
 
-                    try:
-                        price_sell_eur_kwh, price_buy_eur_kwh = DayAheadPrice.get_prices(
-                            "vkw_dyn", start_date=current_time.floor("15min"),
-                            epex_source=my_config["prices"]["epex_source"])
-                        prices_old = price_sell_eur_kwh, price_buy_eur_kwh
-                    except Exception as e:
-                        # If fetching new prices fails, check if we have old prices and if they
-                        # are recent enough (within 6 hours). If not, raise an error.
-                        if prices_old[0].empty or prices_old[1].empty:
-                            raise RuntimeError("Price source not working during first run.") \
-                                from e
-                        elif (current_time - prices_old[0].index[-1] > pd.Timedelta(hours=6)):
-                            raise RuntimeError("Price data is too old and " + \
-                                "no new data available.") from e
-                        else:
-                            print("Price source not working, using old prices.")
-                            price_sell_eur_kwh = prices_old[0][current_time.floor("15min"):]
-                            price_buy_eur_kwh = prices_old[1][current_time.floor("15min"):]
-
-                    assert isinstance(price_sell_eur_kwh.index, pd.DatetimeIndex)
-                    assert current_time - pd.Timedelta(minutes=15) < price_sell_eur_kwh.index[0] \
-                        <= current_time, \
-                        f"Act time: {current_time}, price start: {price_sell_eur_kwh.index[0]}"
+                    price_sell_eur_kwh, price_buy_eur_kwh = price_cache.get_prices(
+                        current_time, epex_sources=my_config["prices"]["epex_sources"])
 
                     weather_data = WeatherDataRetriever.retrieve_weather_data(
                         time_range = price_sell_eur_kwh.index)
