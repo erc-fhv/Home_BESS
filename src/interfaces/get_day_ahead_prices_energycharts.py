@@ -27,7 +27,8 @@ class EnergyChartsPrice:
 
         if start_date is None:
             # Take the current time rounded down to the nearest 15 minutes
-            start_date = pd.Timestamp.now(tz="Europe/Vienna").floor("15min")
+            now = pd.Timestamp.now(tz="Europe/Vienna")
+            start_date = now.floor("15min", ambiguous=bool(now.dst()))
         if end_date is None:
             # Price horizon is max. 1.5 days, so 2 days ensures we get all relevant prices
             end_date = start_date + pd.Timedelta(days=2)

@@ -25,12 +25,15 @@ class WeatherDataRetriever:
             "direct_radiation", "cloud_cover", "wind_speed_10m", "wind_direction_10m",
             "precipitation"]
 
+        # Request the data in UTC. With a local timezone, Open-Meteo applies the UTC offset
+        # valid at request time to the whole response, so on DST change days the first or
+        # last hour of the requested local range is missing.
         params = {
             "latitude": latitude,
             "longitude": longitude,
-            "start_date": time_range[0].strftime("%Y-%m-%d"),
-            "end_date": time_range[-1].strftime("%Y-%m-%d"),
-            "timezone": timezone,
+            "start_date": time_range[0].tz_convert("UTC").strftime("%Y-%m-%d"),
+            "end_date": time_range[-1].tz_convert("UTC").strftime("%Y-%m-%d"),
+            "timezone": "GMT",
             "minutely_15": weather_features,
         }
 

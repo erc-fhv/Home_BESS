@@ -24,7 +24,8 @@ class AwattarPrice:
 
         if start_date is None:
             # Take the current time rounded down to the nearest 15 minutes
-            start_date = pd.Timestamp.now(tz="Europe/Vienna").floor("15min")
+            now = pd.Timestamp.now(tz="Europe/Vienna")
+            start_date = now.floor("15min", ambiguous=bool(now.dst()))
         if end_date is None:
             # Price horizon is max. 1.5 days, so 2 days ensures we get all relevant prices
             end_date = start_date + pd.Timedelta(days=2)
@@ -33,8 +34,9 @@ class AwattarPrice:
         # aWATTar's "start" filter drops any period starting before it, so a mid-hour
         # start_date would silently skip the in-progress hourly period. Query from the
         # top of the hour instead, and apply the real start_date further down.
+        query_start = start_date.floor("h", ambiguous=bool(start_date.dst()))
         params = {
-            "start": int(start_date.floor("h").tz_convert("UTC").timestamp() * 1000),
+            "start": int(query_start.tz_convert("UTC").timestamp() * 1000),
             "end": int(end_date.tz_convert("UTC").timestamp() * 1000),
         }
         response = requests.get(AwattarPrice.BASE_URLS[country_code], params=params, timeout=10)

@@ -75,7 +75,9 @@ class MpcController:
 
                     user_notifier.on_loop_success()
 
-                    next_exec_time_15min = current_time.floor("15min") + pd.Timedelta(minutes=15)
+                    # Pass the DST flag, otherwise floor fails in the repeated hour at the DST change
+                    next_exec_time_15min = current_time.floor(
+                        "15min", ambiguous=bool(current_time.dst())) + pd.Timedelta(minutes=15)
 
                     next_fast_cycle = current_time + pd.Timedelta(seconds=fast_period)
 

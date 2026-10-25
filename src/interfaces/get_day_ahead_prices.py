@@ -20,7 +20,8 @@ class DayAheadPrice:
 
         if start_date is None:
             # Take the current time rounded down to the nearest 15 minutes
-            start_date = pd.Timestamp.now(tz="Europe/Vienna").floor("15min")
+            now = pd.Timestamp.now(tz="Europe/Vienna")
+            start_date = now.floor("15min", ambiguous=bool(now.dst()))
         if end_date is None:
             # Price horizon is max. 1.5 days, so 2 days ensures we get all relevant prices
             end_date = start_date + pd.Timedelta(days=2)
@@ -148,11 +149,14 @@ class CachedDayAheadPrice:
         A RuntimeError is raised only if the remaining price horizon is shorter than
         min_horizon."""
 
+        # Pass the DST flag, otherwise floor fails in the repeated hour at the DST change
+        start_15min = current_time.floor("15min", ambiguous=bool(current_time.dst()))
+
         if self.price_sell.empty \
                 or self.price_sell.index[-1] < self.required_price_end(current_time):
             try:
                 price_sell, price_buy = DayAheadPrice.get_prices(
-                    price_type, start_date=current_time.floor("15min"),
+                    price_type, start_date=start_15min,
                     epex_sources=epex_sources)
                 if self.price_sell.empty or price_sell.index[-1] >= self.price_sell.index[-1]:
                     self.price_sell, self.price_buy = price_sell, price_buy
@@ -168,8 +172,8 @@ class CachedDayAheadPrice:
                 f"{self.min_horizon / pd.Timedelta(hours=1):g} hours and " + \
                 "no new price data available.") from self.fetch_error
 
-        price_sell = self.price_sell[current_time.floor("15min"):]
-        price_buy = self.price_buy[current_time.floor("15min"):]
+        price_sell = self.price_sell[start_15min:]
+        price_buy = self.price_buy[start_15min:]
 
         assert isinstance(price_sell.index, pd.DatetimeIndex)
         assert current_time - pd.Timedelta(minutes=15) < price_sell.index[0] <= current_time, \

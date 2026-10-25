@@ -31,8 +31,12 @@ class BessOptimizer:
         """
 
         # Konsistenzcheck
-        assert price_sell_eur_kwh.index.equals(price_buy_eur_kwh.index)
-        assert price_buy_eur_kwh.index.equals(net_load_kw.index)
+        assert price_sell_eur_kwh.index.equals(price_buy_eur_kwh.index), \
+            "Index of sell and buy prices differ."
+        assert price_buy_eur_kwh.index.equals(net_load_kw.index), \
+            f"Index of prices ({price_buy_eur_kwh.index[0]} to {price_buy_eur_kwh.index[-1]}, " + \
+            f"{len(price_buy_eur_kwh)} values) and net load ({net_load_kw.index[0]} to " + \
+            f"{net_load_kw.index[-1]}, {len(net_load_kw)} values) differ."
 
         # SOC-Grenzen clampen
         soc_init_percent = float(np.clip(soc_init_percent, soc_min_percent, soc_max_percent))
