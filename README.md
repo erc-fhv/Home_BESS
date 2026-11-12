@@ -16,14 +16,15 @@ If you use this repository in your research, please cite:
 
 ```bibtex
 @article{Moosbrugger2026,
-  author  = {Lukas Moosbrugger and Valentin Seiler and Philipp Wohlgenannt and Sashko Ristov and Peter Kepplinger},
-  title   = {Real-World Model Predictive Control for Home Battery Systems: Towards Closing the Simulation-to-Reality Gap},
-  journal = {ACM SIGEnergy Energy Informatics Review},
-  volume  = {6},
-  number  = {3},
-  month   = sep,
-  year    = {2026},
-  url     = {https://energy.acm.org/eir/real-world-model-predictive-control-for-home-battery-systems-towards-closing-the-simulation-to-reality-gap/}
+  author = {Moosbrugger, Lukas and Seiler, Valentin and Wohlgenannt, Philipp and Kepplinger, Peter and Ristov, Sashko},
+  title = {Real-World Model Predictive Control for Home Battery Systems: Towards Closing the Simulation-to-Reality Gap},
+  year = {2026},
+  issue_date = {September 2026},
+  publisher = {Association for Computing Machinery},
+  address = {New York, NY, USA},
+  volume = {6},
+  number = {3},
+  doi = {10.1145/3861130.3861140},
 }
 ````
 
